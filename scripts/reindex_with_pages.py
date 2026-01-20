@@ -40,17 +40,17 @@ def find_pdfs(data_dir: Path) -> list[tuple[str, Path]]:
 
 def process_pdf(source: str, pdf_path: Path) -> list[dict]:
     """Extract and chunk a PDF with page numbers."""
-    print(f"\n📄 Processing: {pdf_path.name}")
-    
+    print(f"\n[PDF] Processing: {pdf_path.name}")
+
     # Extract with page tracking
     extractor = PDFExtractor()
     result = extractor.extract(pdf_path)
-    
+
     if not result.page_texts:
-        print(f"   ⚠️ No page texts extracted (quality: {result.quality_score:.2f})")
+        print(f"   [WARN] No page texts extracted (quality: {result.quality_score:.2f})")
         return []
-    
-    print(f"   ✅ Extracted {result.pages} pages (quality: {result.quality_score:.2f})")
+
+    print(f"   [OK] Extracted {result.pages} pages (quality: {result.quality_score:.2f})")
     
     # Chunk with page numbers
     metadata = {
@@ -67,7 +67,7 @@ def process_pdf(source: str, pdf_path: Path) -> list[dict]:
         metadata=metadata,
     )
     
-    print(f"   ✅ Created {len(chunks)} chunks with page numbers")
+    print(f"   [OK] Created {len(chunks)} chunks with page numbers")
     
     # Convert to dicts for indexing
     return [chunk.to_dict() for chunk in chunks]
@@ -75,24 +75,25 @@ def process_pdf(source: str, pdf_path: Path) -> list[dict]:
 
 def save_chunks_json(all_chunks: list[dict], output_path: Path):
     """Save chunks to JSON for backup."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(all_chunks, f, ensure_ascii=False, indent=2)
-    print(f"\n💾 Saved {len(all_chunks)} chunks to {output_path}")
+    print(f"\n[SAVE] Saved {len(all_chunks)} chunks to {output_path}")
 
 
 def index_to_pinecone(chunks: list[dict]):
     """Index chunks to Pinecone with page numbers."""
-    print("\n🔄 Indexing to Pinecone...")
-    
+    print("\n[INDEX] Indexing to Pinecone...")
+
     store = PineconeStore()
-    
+
     # Delete existing vectors (full re-index)
     try:
-        print("   🗑️ Clearing existing index...")
+        print("   [CLEAR] Clearing existing index...")
         store.index.delete(delete_all=True)
-        print("   ✅ Index cleared")
+        print("   [OK] Index cleared")
     except Exception as e:
-        print(f"   ⚠️ Could not clear index: {e}")
+        print(f"   [WARN] Could not clear index: {e}")
     
     # Create TextChunk-like objects for indexing
     from src.processors.chunker import TextChunk
@@ -117,45 +118,45 @@ def index_to_pinecone(chunks: list[dict]):
     
     # Index in batches
     count = store.add_chunks(iter(chunk_objects))
-    print(f"\n✅ Indexed {count} chunks to Pinecone with page numbers!")
+    print(f"\n[OK] Indexed {count} chunks to Pinecone with page numbers!")
 
 
 def main():
     """Main entry point."""
     print("=" * 60)
-    print("🔄 RE-INDEXING PDFs WITH PAGE NUMBERS")
+    print("RE-INDEXING PDFs WITH PAGE NUMBERS")
     print("=" * 60)
     print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    
+
     data_dir = Path("data")
-    
+
     # Find all PDFs
     pdfs = find_pdfs(data_dir)
-    print(f"\n📚 Found {len(pdfs)} PDFs to process:")
+    print(f"\n[FOUND] {len(pdfs)} PDFs to process:")
     for source, pdf in pdfs:
         print(f"   - [{source}] {pdf.name}")
-    
+
     if not pdfs:
-        print("\n❌ No PDFs found in data directory!")
+        print("\n[ERROR] No PDFs found in data directory!")
         return
-    
+
     # Process all PDFs
     all_chunks = []
     for source, pdf_path in pdfs:
         chunks = process_pdf(source, pdf_path)
         all_chunks.extend(chunks)
-    
-    print(f"\n📊 Total: {len(all_chunks)} chunks from {len(pdfs)} PDFs")
-    
+
+    print(f"\n[TOTAL] {len(all_chunks)} chunks from {len(pdfs)} PDFs")
+
     # Save to JSON backup
     output_path = data_dir / "processed" / "all_chunks_with_pages.json"
     save_chunks_json(all_chunks, output_path)
-    
+
     # Index to Pinecone
     index_to_pinecone(all_chunks)
-    
+
     print("\n" + "=" * 60)
-    print("✅ RE-INDEXING COMPLETE!")
+    print("RE-INDEXING COMPLETE!")
     print("=" * 60)
     print(f"Finished: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("\nPage numbers are now available in source metadata.")

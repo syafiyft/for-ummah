@@ -127,8 +127,18 @@ if st.button("🔍 Ask Agent Deen", type="primary", use_container_width=True):
                     st.markdown(f'<span class="{conf_class}">Confidence: **{confidence}**</span>', 
                                unsafe_allow_html=True)
                     
-                    # Sources (deduplicated)
-                    if data.get("sources"):
+                    # Check if this is an out-of-scope response (no sources should be shown)
+                    answer_text = data.get("answer", "").lower()
+                    is_out_of_scope = any(phrase in answer_text for phrase in [
+                        "i am agent deen, specialized only",
+                        "saya agent deen, pakar dalam",
+                        "أنا وكيل الدين، متخصص فقط",
+                        "please ask a question related to islamic finance",
+                        "sila tanya soalan berkaitan kewangan islam",
+                    ])
+                    
+                    # Sources (deduplicated) - skip if out of scope
+                    if data.get("sources") and not is_out_of_scope:
                         st.markdown("### Sources / المصادر")
                         seen_sources = set()
                         for source in data["sources"]:
@@ -143,7 +153,11 @@ if st.button("🔍 Ask Agent Deen", type="primary", use_container_width=True):
                             if source.get('file'):
                                 source_info += f" | 📖 {source.get('file')}"
                             if source.get('page'):
-                                source_info += f" | 📄 Page {source.get('page')}"
+                                # Show Page X/Total format if total_pages available
+                                if source.get('total_pages'):
+                                    source_info += f" | 📄 Page {source.get('page')}/{source.get('total_pages')}"
+                                else:
+                                    source_info += f" | 📄 Page {source.get('page')}"
                             
                             st.markdown(f"""
                             <div class="source-card">

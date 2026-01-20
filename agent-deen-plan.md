@@ -19,6 +19,11 @@
 | **Page Number Tracking** | ✅ Done | Chunks include source page numbers |
 | **Re-indexing Script** | ✅ Done | `scripts/reindex_with_pages.py` created |
 | **Source Citations** | ✅ Done | Displays source, file, and page number |
+| **Page X/Total Format** | ✅ Done | Shows "Page 8/24" in sources |
+| **URL Scraper** | ✅ Done | `scripts/scrape_url.py` - download from direct URL |
+| **Scope Detection** | ✅ Done | Rejects off-topic questions |
+| **Anti-Hallucination Prompt** | ✅ Done | Stricter source grounding |
+| **Sentence-Based Chunking** | ✅ Done | Clean chunks with full sentences, no broken words |
 
 ---
 
@@ -28,10 +33,9 @@
 
 | Task | Notes |
 |------|-------|
-| **Page format: X/Total** | Show page as "Page 139/188" instead of just "Page 139" to handle PDF vs printed page numbering differences |
+| **Better LLM Model** | Consider GPT-4 or Claude for better instruction following (current llama3.2 sometimes ignores prompt rules) |
+| **Relevance Score Threshold** | Skip sources with low relevance score to avoid unrelated context |
 | **Multiple source citation** | When answer comes from multiple sources, list all of them in the answer section |
-| **Reduce hallucination** | Improve prompt to ensure AI only answers from Shariah sources, not from its general knowledge |
-| **Stricter source grounding** | Make the LLM quote directly from sources rather than paraphrasing with additional info |
 
 ### 🟡 Medium Priority
 
@@ -76,10 +80,25 @@ src/
 | **Backend** | FastAPI |
 | **Frontend** | Streamlit |
 | **PDF Extraction** | PyMuPDF → Tesseract (cascade) |
+| **Web Scraping** | Playwright (WAF bypass) + BeautifulSoup |
 
 ---
 
 ## Recent Changes (2026-01-20)
+
+### Playwright Integration for WAF Bypass
+
+- `src/scrapers/base.py` - Added Playwright support methods:
+  - `_get_page_with_playwright()` - Fetch pages bypassing WAF
+  - `_get_soup_with_playwright()` - Parse HTML with WAF bypass
+  - `_download_pdf_with_playwright()` - Download PDFs through WAF
+  - `_download_pdf_fallback()` - Fallback to requests if Playwright fails
+- `src/scrapers/bnm.py` - Updated BNM scraper to use Playwright
+  - Bypasses AWS WAF bot protection on BNM website
+  - Falls back to requests if Playwright unavailable
+  - Added policy page resolution for non-PDF links
+- `requirements.txt` - Added `playwright>=1.40.0`
+- Deleted standalone `scraper.py` (merged into `src/scrapers/`)
 
 ### Page Number Tracking
 
@@ -99,6 +118,42 @@ src/
 - Source cards now display page numbers
 - Confidence indicator added
 - RTL Arabic text support
+
+---
+
+## Recent Changes (2026-01-21)
+
+### URL Scraper (Direct Download)
+
+- `src/scrapers/base.py` - New methods:
+  - `scrape_from_url()` - Download PDF from direct URL
+  - `_sanitize_title_from_url()` - Clean filename extraction
+- `scripts/scrape_url.py` - NEW standalone script for URL-to-index pipeline
+- Clean filenames (removes numeric IDs like `938039` from BNM URLs)
+
+### Page X/Total Format
+
+- `TextChunk.total_pages` - Added to chunker
+- `app.py` - Now displays "Page 8/24" instead of just "Page 8"
+
+### Anti-Hallucination & Scope Detection
+
+- `src/ai/prompts.py` - Major improvements:
+  - STEP 0: Scope detection (reject off-topic questions)
+  - Stricter context relevance checking
+  - Require source attribution at start
+  - Better "I don't know" responses
+- `app.py` - Hide irrelevant sources for out-of-scope questions
+- Chatbot now politely declines non-Islamic finance questions
+
+### Sentence-Based Chunking
+
+- `src/processors/chunker.py` - Completely rewritten:
+  - `_clean_chunk_start()` - Removes partial sentences from chunk beginnings
+  - Chunks now end at sentence boundaries (. ! ? etc.)
+  - Smart overlap handling - next chunk starts at sentence beginning
+  - No more broken words like "e, including where–" at chunk starts
+- Re-indexed all documents: 7600 cleaner chunks (down from 8503)
 
 ---
 
@@ -140,8 +195,11 @@ Improvements needed in `src/ai/prompts.py`:
 ## Run Commands
 
 ```bash
-# Install
+# Install dependencies
 pip install -r requirements.txt
+
+# Install Playwright browser (first time only)
+playwright install chromium
 
 # Ensure Ollama is running
 ollama serve
@@ -155,6 +213,9 @@ uvicorn src.api.main:app --reload --port 8000
 
 # Run Streamlit UI (in separate terminal)
 streamlit run app.py
+
+# Run BNM scraper (optional - to download new documents)
+python -m src.scrapers.bnm
 ```
 
 ---
