@@ -45,7 +45,7 @@ pip install -r requirements.txt
 - `streamlit` - Web UI
 - `pinecone` - Vector database
 - `pymupdf` - PDF text extraction
-- `anthropic`, `openai` - Optional cloud LLMs
+- `playwright` - Web scraping with WAF bypass
 - `requests`, `beautifulsoup4` - Web scraping
 
 ### 3. Install Ollama
@@ -139,7 +139,8 @@ for-ummah/
 │   └── api/               # FastAPI endpoints
 │
 ├── scripts/
-│   └── reindex_with_pages.py  # Re-process PDFs with page tracking
+│   ├── reindex_with_pages.py  # Re-process PDFs with page tracking
+│   └── scrape_url.py          # Download & index PDF from URL
 │
 └── data/                  # Shariah documents (PDFs)
 ```
@@ -171,17 +172,27 @@ for-ummah/
 
 ## 📦 Indexing Documents
 
-To index Shariah documents into the vector database:
+### Re-index all PDFs
 
 ```bash
-# Process PDFs and index with page tracking
+# Process all PDFs and index with page tracking
 python scripts/reindex_with_pages.py
+```
+
+### Add a single PDF from URL
+
+```bash
+# Download and index a PDF directly from URL
+python scripts/scrape_url.py "https://example.com/document.pdf"
+
+# With custom title and source
+python scripts/scrape_url.py "URL" --title "Custom Title" --source BNM
 ```
 
 This will:
 
-1. Extract text from PDFs in `data/` directory
-2. Chunk text while preserving page numbers
+1. Extract text from PDFs with sentence-based chunking
+2. Preserve page numbers for source citations
 3. Upload to Pinecone with metadata
 
 ---

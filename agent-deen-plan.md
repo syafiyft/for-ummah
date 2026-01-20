@@ -23,6 +23,7 @@
 | **URL Scraper** | ✅ Done | `scripts/scrape_url.py` - download from direct URL |
 | **Scope Detection** | ✅ Done | Rejects off-topic questions |
 | **Anti-Hallucination Prompt** | ✅ Done | Stricter source grounding |
+| **Sentence-Based Chunking** | ✅ Done | Clean chunks with full sentences, no broken words |
 
 ---
 
@@ -134,7 +135,6 @@ src/
 
 - `TextChunk.total_pages` - Added to chunker
 - `app.py` - Now displays "Page 8/24" instead of just "Page 8"
-- Re-indexed all 8503 chunks with Page X/Total support
 
 ### Anti-Hallucination & Scope Detection
 
@@ -143,7 +143,17 @@ src/
   - Stricter context relevance checking
   - Require source attribution at start
   - Better "I don't know" responses
+- `app.py` - Hide irrelevant sources for out-of-scope questions
 - Chatbot now politely declines non-Islamic finance questions
+
+### Sentence-Based Chunking
+
+- `src/processors/chunker.py` - Completely rewritten:
+  - `_clean_chunk_start()` - Removes partial sentences from chunk beginnings
+  - Chunks now end at sentence boundaries (. ! ? etc.)
+  - Smart overlap handling - next chunk starts at sentence beginning
+  - No more broken words like "e, including where–" at chunk starts
+- Re-indexed all documents: 7600 cleaner chunks (down from 8503)
 
 ---
 
