@@ -138,14 +138,16 @@ if st.button("🔍 Ask Agent Deen", type="primary", use_container_width=True):
                                 continue
                             seen_sources.add(source_key)
                             
-                            # Get page info if available
-                            page_info = ""
+                            # Build source info with file and page
+                            source_info = source.get('source', 'Unknown')
                             if source.get('file'):
-                                page_info = f" | 📖 {source.get('file')}"
+                                source_info += f" | 📖 {source.get('file')}"
+                            if source.get('page'):
+                                source_info += f" | 📄 Page {source.get('page')}"
                             
                             st.markdown(f"""
                             <div class="source-card">
-                                <span class="source-title">📄 {source.get('source', 'Unknown')}{page_info}</span><br>
+                                <span class="source-title">{source_info}</span><br>
                                 <span class="source-snippet">{source.get('snippet', '')[:200]}...</span>
                             </div>
                             """, unsafe_allow_html=True)

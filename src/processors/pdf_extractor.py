@@ -36,6 +36,7 @@ class ExtractionResult:
     language: Language
     pages: int
     quality_score: float  # 0.0 to 1.0
+    page_texts: list[tuple[int, str]] | None = None  # List of (page_num, text)
     
     def to_dict(self) -> dict:
         return {
@@ -44,6 +45,7 @@ class ExtractionResult:
             "language": self.language.value,
             "pages": self.pages,
             "quality_score": self.quality_score,
+            "page_texts": self.page_texts,
         }
 
 
@@ -99,8 +101,12 @@ class PDFExtractor:
             doc = fitz.open(file_path)
             
             text_parts = []
-            for page in doc:
-                text_parts.append(page.get_text())
+            page_texts = []  # Track (page_num, text) pairs
+            
+            for page_num, page in enumerate(doc, start=1):
+                page_text = page.get_text()
+                text_parts.append(page_text)
+                page_texts.append((page_num, page_text))
             
             text = "\n\n".join(text_parts)
             pages = len(doc)
@@ -115,6 +121,7 @@ class PDFExtractor:
                 language=language,
                 pages=pages,
                 quality_score=quality,
+                page_texts=page_texts,
             )
             
         except Exception as e:

@@ -95,13 +95,20 @@ class PineconeStore:
         for chunk in chunks:
             embedding = self.embeddings.embed(chunk.text)
             
+            # Build metadata with page number if available
+            metadata = {
+                "text": chunk.text[:1000],  # Pinecone metadata limit
+                **{k: str(v)[:500] for k, v in chunk.metadata.items()},
+            }
+            
+            # Add page number if available
+            if hasattr(chunk, 'page_number') and chunk.page_number is not None:
+                metadata["page_number"] = chunk.page_number
+            
             vectors.append({
                 "id": f"chunk_{count}_{hash(chunk.text) % 1000000}",
                 "values": embedding,
-                "metadata": {
-                    "text": chunk.text[:1000],  # Pinecone metadata limit
-                    **{k: str(v)[:500] for k, v in chunk.metadata.items()},
-                }
+                "metadata": metadata,
             })
             count += 1
             

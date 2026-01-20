@@ -19,15 +19,19 @@ class TextChunk:
     start_char: int
     end_char: int
     metadata: dict
+    page_number: int | None = None  # Source page number (if available)
     
     def to_dict(self) -> dict:
-        return {
+        result = {
             "text": self.text,
             "chunk_index": self.chunk_index,
             "start_char": self.start_char,
             "end_char": self.end_char,
             **self.metadata,
         }
+        if self.page_number is not None:
+            result["page_number"] = self.page_number
+        return result
 
 
 def chunk_text(
@@ -136,3 +140,54 @@ def chunk_documents(documents: list[dict]) -> Iterator[TextChunk]:
         
         for chunk in chunk_text(text, metadata=metadata):
             yield chunk
+
+
+def chunk_with_pages(
+    page_texts: list[tuple[int, str]],
+    chunk_size: int | None = None,
+    chunk_overlap: int | None = None,
+    metadata: dict | None = None,
+) -> list[TextChunk]:
+    """
+    Chunk text while preserving page number information.
+    
+    Each chunk will include the page number(s) it came from.
+    For chunks that span multiple pages, uses the starting page.
+    
+    Args:
+        page_texts: List of (page_number, text) tuples
+        chunk_size: Maximum characters per chunk
+        chunk_overlap: Overlap between chunks
+        metadata: Base metadata to attach
+        
+    Returns:
+        List of TextChunk objects with page_number set
+    """
+    chunk_size = chunk_size or settings.chunk_size
+    chunk_overlap = chunk_overlap or settings.chunk_overlap
+    metadata = metadata or {}
+    
+    chunks = []
+    chunk_index = 0
+    
+    # Process each page separately to maintain page tracking
+    for page_num, page_text in page_texts:
+        if not page_text or not page_text.strip():
+            continue
+        
+        # Chunk this page's text
+        page_chunks = chunk_text(
+            page_text, 
+            chunk_size=chunk_size, 
+            chunk_overlap=chunk_overlap,
+            metadata=metadata,
+        )
+        
+        # Add page number to each chunk from this page
+        for chunk in page_chunks:
+            chunk.page_number = page_num
+            chunk.chunk_index = chunk_index
+            chunks.append(chunk)
+            chunk_index += 1
+    
+    return chunks
