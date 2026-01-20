@@ -138,13 +138,15 @@ class RAGPipeline:
             # Get file/title info for display
             file_info = doc["metadata"].get("title", "") or doc["metadata"].get("filename", "")
             
-            # Get page number if available
+            # Get page number and total pages if available
             page_num = doc["metadata"].get("page_number")
+            total_pages = doc["metadata"].get("total_pages")
             
             source = {
                 "source": doc["metadata"].get("source", "Unknown"),
                 "file": file_info,
                 "page": page_num,
+                "total_pages": total_pages,
                 "snippet": doc["text"][:200] + "..." if len(doc["text"]) > 200 else doc["text"],
                 "score": doc.get("score", 0),
             }

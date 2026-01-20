@@ -143,7 +143,11 @@ if st.button("🔍 Ask Agent Deen", type="primary", use_container_width=True):
                             if source.get('file'):
                                 source_info += f" | 📖 {source.get('file')}"
                             if source.get('page'):
-                                source_info += f" | 📄 Page {source.get('page')}"
+                                # Show Page X/Total format if total_pages available
+                                if source.get('total_pages'):
+                                    source_info += f" | 📄 Page {source.get('page')}/{source.get('total_pages')}"
+                                else:
+                                    source_info += f" | 📄 Page {source.get('page')}"
                             
                             st.markdown(f"""
                             <div class="source-card">

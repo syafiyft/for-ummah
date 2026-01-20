@@ -292,6 +292,118 @@ class BaseScraper(ABC):
             logger.warning(f"Fallback download failed: {e}")
             return None
 
+    def _sanitize_title_from_url(self, url: str) -> str:
+        """
+        Extract a clean document title from a URL.
+        Removes numeric IDs and cleans up the filename.
+
+        Example:
+            Input: https://www.bnm.gov.my/documents/20124/938039/pd_credit+risk_dec2024.pdf
+            Output: pd_credit_risk_dec2024
+        """
+        from urllib.parse import urlparse, unquote
+
+        # Parse URL and get the last path segment
+        parsed = urlparse(url)
+        path = parsed.path
+
+        # Get filename from path
+        filename = path.split("/")[-1]
+
+        # URL decode (+ becomes space, %20 becomes space, etc.)
+        filename = unquote(filename.replace("+", " "))
+
+        # Remove .pdf extension
+        if filename.lower().endswith(".pdf"):
+            filename = filename[:-4]
+
+        # Clean up: replace spaces and special chars with underscores
+        clean_title = re.sub(r'[^\w\s-]', '', filename)
+        clean_title = re.sub(r'[\s]+', '_', clean_title)
+
+        # Remove leading/trailing underscores
+        clean_title = clean_title.strip('_')
+
+        return clean_title if clean_title else "document"
+
+    def scrape_from_url(self, url: str, custom_title: str | None = None) -> ScrapedDocument | None:
+        """
+        Download and register a PDF from a direct URL.
+
+        This method allows downloading PDFs from direct URLs without
+        crawling a website. Useful for adding specific documents.
+
+        Args:
+            url: Direct URL to the PDF file
+            custom_title: Optional custom title for the document
+
+        Returns:
+            ScrapedDocument if successful, None if failed
+        """
+        # Extract clean title from URL if not provided
+        title = custom_title or self._sanitize_title_from_url(url)
+
+        # Generate clean filename (no hash prefix for direct URL scraping)
+        filename = f"{self._sanitize_filename(title)}.pdf"
+        file_path = self.data_dir / filename
+
+        logger.info(f"Scraping from URL: {url}")
+        logger.info(f"Target filename: {filename}")
+
+        # Skip if already downloaded and not empty
+        if file_path.exists() and file_path.stat().st_size > 0:
+            logger.info(f"File already exists: {filename}")
+            return ScrapedDocument(
+                source=self.source,
+                url=url,
+                file_path=file_path,
+                title=title,
+            )
+
+        # Try Playwright first (for WAF bypass)
+        if PLAYWRIGHT_AVAILABLE:
+            try:
+                with sync_playwright() as p:
+                    browser = p.chromium.launch(headless=True)
+                    context = browser.new_context(
+                        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                        accept_downloads=True
+                    )
+                    page = context.new_page()
+
+                    # Set up download handling
+                    with page.expect_download(timeout=60000) as download_info:
+                        page.goto(url, timeout=60000)
+
+                    download = download_info.value
+                    download.save_as(str(file_path))
+                    browser.close()
+
+                if file_path.exists() and file_path.stat().st_size > 0:
+                    logger.info(f"Downloaded via Playwright: {filename}")
+                    return ScrapedDocument(
+                        source=self.source,
+                        url=url,
+                        file_path=file_path,
+                        title=title,
+                    )
+
+            except Exception as e:
+                logger.warning(f"Playwright download failed: {e}, trying fallback...")
+
+        # Fallback to requests
+        result = self._download_pdf_fallback(url, file_path)
+        if result:
+            return ScrapedDocument(
+                source=self.source,
+                url=url,
+                file_path=file_path,
+                title=title,
+            )
+
+        logger.error(f"Failed to download from URL: {url}")
+        return None
+
     @abstractmethod
     def get_document_urls(self) -> Iterator[tuple[str, str]]:
         """

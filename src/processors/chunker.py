@@ -20,6 +20,7 @@ class TextChunk:
     end_char: int
     metadata: dict
     page_number: int | None = None  # Source page number (if available)
+    total_pages: int | None = None  # Total pages in source document
     
     def to_dict(self) -> dict:
         result = {
@@ -31,6 +32,8 @@ class TextChunk:
         }
         if self.page_number is not None:
             result["page_number"] = self.page_number
+        if self.total_pages is not None:
+            result["total_pages"] = self.total_pages
         return result
 
 
@@ -147,6 +150,7 @@ def chunk_with_pages(
     chunk_size: int | None = None,
     chunk_overlap: int | None = None,
     metadata: dict | None = None,
+    total_pages: int | None = None,
 ) -> list[TextChunk]:
     """
     Chunk text while preserving page number information.
@@ -159,13 +163,18 @@ def chunk_with_pages(
         chunk_size: Maximum characters per chunk
         chunk_overlap: Overlap between chunks
         metadata: Base metadata to attach
+        total_pages: Total number of pages in the source document
         
     Returns:
-        List of TextChunk objects with page_number set
+        List of TextChunk objects with page_number and total_pages set
     """
     chunk_size = chunk_size or settings.chunk_size
     chunk_overlap = chunk_overlap or settings.chunk_overlap
     metadata = metadata or {}
+    
+    # Auto-detect total pages if not provided
+    if total_pages is None and page_texts:
+        total_pages = len(page_texts)
     
     chunks = []
     chunk_index = 0
@@ -183,9 +192,10 @@ def chunk_with_pages(
             metadata=metadata,
         )
         
-        # Add page number to each chunk from this page
+        # Add page number and total pages to each chunk from this page
         for chunk in page_chunks:
             chunk.page_number = page_num
+            chunk.total_pages = total_pages
             chunk.chunk_index = chunk_index
             chunks.append(chunk)
             chunk_index += 1
