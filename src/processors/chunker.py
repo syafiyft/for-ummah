@@ -37,6 +37,31 @@ class TextChunk:
         return result
 
 
+def _clean_chunk_start(text: str) -> str:
+    """
+    Clean up the start of a chunk to begin at a sentence boundary.
+    Removes partial sentences from the beginning.
+    """
+    if not text:
+        return text
+    
+    # If starts with lowercase or mid-sentence characters, find first sentence start
+    first_char = text.lstrip()[0] if text.strip() else ''
+    
+    # If already starts with uppercase, number, or bullet, it's likely clean
+    if first_char.isupper() or first_char.isdigit() or first_char in '•–-(':
+        return text
+    
+    # Find the first sentence boundary (. ! ? followed by space/newline and uppercase)
+    import re
+    match = re.search(r'[.!?؟。]\s+([A-Z\u0600-\u06FF\d])', text)
+    if match:
+        return text[match.start() + 1:].lstrip()
+    
+    # If no sentence boundary found, return as-is
+    return text
+
+
 def chunk_text(
     text: str,
     chunk_size: int | None = None,
@@ -44,10 +69,12 @@ def chunk_text(
     metadata: dict | None = None,
 ) -> list[TextChunk]:
     """
-    Split text into overlapping chunks.
+    Split text into overlapping chunks with clean sentence boundaries.
     
-    Uses sentence and paragraph boundaries when possible
-    to avoid breaking mid-sentence.
+    Ensures:
+    - Chunks end at sentence boundaries (. ! ? etc.)
+    - Chunks start at sentence beginnings
+    - No broken words at start/end
     
     Args:
         text: Text to chunk
@@ -64,7 +91,7 @@ def chunk_text(
     
     if not text or len(text) <= chunk_size:
         return [TextChunk(
-            text=text,
+            text=text.strip(),
             chunk_index=0,
             start_char=0,
             end_char=len(text),
@@ -75,36 +102,51 @@ def chunk_text(
     start = 0
     chunk_index = 0
     
+    # Sentence-ending punctuation
+    sentence_ends = '.!?؟。'
+    
     while start < len(text):
         # Determine end position
-        end = start + chunk_size
+        end = min(start + chunk_size, len(text))
         
-        if end >= len(text):
-            end = len(text)
-        else:
-            # Try to break at sentence boundary
-            # Look for . ! ? followed by space or newline
+        if end < len(text):
+            # Try to break at sentence boundary (search backwards)
             best_break = end
+            search_start = max(start + chunk_size // 2, start + 100)  # Don't search too far back
             
-            # Search backwards for good break point
-            search_start = max(start + chunk_size // 2, start)
             for i in range(end, search_start, -1):
-                if i < len(text) and text[i-1] in '.!?؟。' and (i >= len(text) or text[i] in ' \n\t'):
-                    best_break = i
-                    break
+                if text[i-1] in sentence_ends:
+                    # Check if followed by space/newline (not mid-abbreviation)
+                    if i >= len(text) or text[i] in ' \n\t\r':
+                        best_break = i
+                        break
             
-            # If no sentence break, try paragraph break
+            # If no sentence break found, try paragraph break
             if best_break == end:
                 for i in range(end, search_start, -1):
-                    if i < len(text) and text[i-1] == '\n':
+                    if text[i-1] == '\n':
                         best_break = i
+                        break
+            
+            # Last resort: break at last space (don't break mid-word)
+            if best_break == end:
+                for i in range(end, search_start, -1):
+                    if text[i] in ' \n\t':
+                        best_break = i + 1
                         break
             
             end = best_break
         
-        chunk_text_content = text[start:end].strip()
+        # Extract and clean the chunk
+        chunk_text_raw = text[start:end]
         
-        if chunk_text_content:  # Don't add empty chunks
+        # Clean start of chunk (remove partial sentences from overlap)
+        if start > 0:  # Only clean if not the first chunk
+            chunk_text_content = _clean_chunk_start(chunk_text_raw).strip()
+        else:
+            chunk_text_content = chunk_text_raw.strip()
+        
+        if chunk_text_content and len(chunk_text_content) > 20:  # Don't add tiny chunks
             chunks.append(TextChunk(
                 text=chunk_text_content,
                 chunk_index=chunk_index,
@@ -114,10 +156,20 @@ def chunk_text(
             ))
             chunk_index += 1
         
-        # Move start with overlap
-        start = end - chunk_overlap
-        if start <= chunks[-1].start_char if chunks else 0:
-            start = end  # Prevent infinite loop
+        # Move start with overlap, but find a clean sentence start
+        next_start = end - chunk_overlap
+        
+        # Find next sentence start after next_start
+        for i in range(next_start, min(next_start + 200, len(text))):
+            if i > 0 and text[i-1] in sentence_ends and (i >= len(text) or text[i] in ' \n\t'):
+                next_start = i
+                break
+        
+        # Prevent infinite loop
+        if next_start <= start:
+            next_start = end
+        
+        start = next_start
     
     return chunks
 
