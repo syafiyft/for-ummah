@@ -76,10 +76,25 @@ src/
 | **Backend** | FastAPI |
 | **Frontend** | Streamlit |
 | **PDF Extraction** | PyMuPDF → Tesseract (cascade) |
+| **Web Scraping** | Playwright (WAF bypass) + BeautifulSoup |
 
 ---
 
 ## Recent Changes (2026-01-20)
+
+### Playwright Integration for WAF Bypass
+
+- `src/scrapers/base.py` - Added Playwright support methods:
+  - `_get_page_with_playwright()` - Fetch pages bypassing WAF
+  - `_get_soup_with_playwright()` - Parse HTML with WAF bypass
+  - `_download_pdf_with_playwright()` - Download PDFs through WAF
+  - `_download_pdf_fallback()` - Fallback to requests if Playwright fails
+- `src/scrapers/bnm.py` - Updated BNM scraper to use Playwright
+  - Bypasses AWS WAF bot protection on BNM website
+  - Falls back to requests if Playwright unavailable
+  - Added policy page resolution for non-PDF links
+- `requirements.txt` - Added `playwright>=1.40.0`
+- Deleted standalone `scraper.py` (merged into `src/scrapers/`)
 
 ### Page Number Tracking
 
@@ -140,8 +155,11 @@ Improvements needed in `src/ai/prompts.py`:
 ## Run Commands
 
 ```bash
-# Install
+# Install dependencies
 pip install -r requirements.txt
+
+# Install Playwright browser (first time only)
+playwright install chromium
 
 # Ensure Ollama is running
 ollama serve
@@ -155,6 +173,9 @@ uvicorn src.api.main:app --reload --port 8000
 
 # Run Streamlit UI (in separate terminal)
 streamlit run app.py
+
+# Run BNM scraper (optional - to download new documents)
+python -m src.scrapers.bnm
 ```
 
 ---
