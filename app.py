@@ -127,8 +127,18 @@ if st.button("🔍 Ask Agent Deen", type="primary", use_container_width=True):
                     st.markdown(f'<span class="{conf_class}">Confidence: **{confidence}**</span>', 
                                unsafe_allow_html=True)
                     
-                    # Sources (deduplicated)
-                    if data.get("sources"):
+                    # Check if this is an out-of-scope response (no sources should be shown)
+                    answer_text = data.get("answer", "").lower()
+                    is_out_of_scope = any(phrase in answer_text for phrase in [
+                        "i am agent deen, specialized only",
+                        "saya agent deen, pakar dalam",
+                        "أنا وكيل الدين، متخصص فقط",
+                        "please ask a question related to islamic finance",
+                        "sila tanya soalan berkaitan kewangan islam",
+                    ])
+                    
+                    # Sources (deduplicated) - skip if out of scope
+                    if data.get("sources") and not is_out_of_scope:
                         st.markdown("### Sources / المصادر")
                         seen_sources = set()
                         for source in data["sources"]:
