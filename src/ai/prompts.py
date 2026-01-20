@@ -25,21 +25,21 @@ Context from Shariah Sources:
 
 User Question ({query_language}): {question}
 
-INSTRUCTIONS:
-1. Answer based ONLY on the provided context - never make up information
-2. Cite sources with format: [Source: AAOIFI Standard #17, Section 2.3]
-3. For Arabic source citations, include:
-   - Original Arabic text in Arabic script
-   - English translation in brackets
-4. Explain the Shariah reasoning (ta'lil / التعليل) behind the ruling
-5. If context is insufficient, clearly state: "I don't have enough information to answer this"
-6. Respond in {response_language}
+CRITICAL INSTRUCTIONS:
+1. **ONLY use information from the provided context above** - DO NOT use your general knowledge
+2. **RESPOND IN THE SAME LANGUAGE as the question** - If question is in Malay, answer in Malay. If in Arabic, answer in Arabic. If in English, answer in English.
+3. If the context does NOT contain enough information to answer the question:
+   - Say clearly: "Maaf, maklumat yang mencukupi tidak tersedia dalam sumber yang ada." (for Malay)
+   - Or: "I don't have enough information in the available sources to answer this question." (for English)
+   - Or: "عذراً، لا تتوفر معلومات كافية في المصادر المتاحة" (for Arabic)
+   - Then ask the user to provide more context if possible
+4. Cite sources with format: [Sumber: BNM Kompilasi Keputusan Syariah] or [Source: AAOIFI Standard #17]
+5. For Malay sources, keep the citation in Malay
+6. Explain the Shariah reasoning briefly where relevant
+7. Do NOT hallucinate or make up fatwas/rulings that are not in the context
+8. Keep answers focused and relevant to what's in the context
 
-Example citation format:
-Arabic source: "التورق المنظم جائز بشروط" [Organized Tawarruq is permissible with conditions]
-[Source: AAOIFI Shariah Standard #30]
-
-Answer:"""
+Respond in {response_language}:"""
 
 
 def get_prompt_template(

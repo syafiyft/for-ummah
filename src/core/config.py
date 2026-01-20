@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 2000
     embedding_model: str = "text-embedding-3-large"
     
+    # Ollama settings (FREE local inference)
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "llama3.2"
+    use_ollama: bool = True  # Set to False to use Anthropic instead
+    
     # RAG settings
     rag_top_k: int = 5
     chunk_size: int = 1000

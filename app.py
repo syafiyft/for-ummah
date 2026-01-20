@@ -25,10 +25,25 @@ st.markdown("""
         font-family: 'Noto Sans Arabic', 'Arial', sans-serif;
     }
     .source-card {
-        background-color: #f0f2f6;
+        background-color: #1e1e1e;
         border-radius: 8px;
-        padding: 10px;
-        margin: 5px 0;
+        padding: 12px 15px;
+        margin: 8px 0;
+        border-left: 3px solid #f0a500;
+    }
+    .source-card .source-title {
+        color: #f0a500;
+        font-weight: bold;
+        font-size: 14px;
+    }
+    .source-card .source-page {
+        color: #888;
+        font-size: 12px;
+    }
+    .source-card .source-snippet {
+        color: #ccc;
+        font-size: 13px;
+        margin-top: 5px;
     }
     .confidence-high { color: #28a745; }
     .confidence-medium { color: #ffc107; }
@@ -112,14 +127,26 @@ if st.button("🔍 Ask Agent Deen", type="primary", use_container_width=True):
                     st.markdown(f'<span class="{conf_class}">Confidence: **{confidence}**</span>', 
                                unsafe_allow_html=True)
                     
-                    # Sources
+                    # Sources (deduplicated)
                     if data.get("sources"):
                         st.markdown("### Sources / المصادر")
+                        seen_sources = set()
                         for source in data["sources"]:
+                            # Deduplicate by source + snippet combo
+                            source_key = f"{source.get('source', '')}-{source.get('snippet', '')[:50]}"
+                            if source_key in seen_sources:
+                                continue
+                            seen_sources.add(source_key)
+                            
+                            # Get page info if available
+                            page_info = ""
+                            if source.get('file'):
+                                page_info = f" | 📖 {source.get('file')}"
+                            
                             st.markdown(f"""
                             <div class="source-card">
-                                📄 <strong>{source.get('source', 'Unknown')}</strong><br>
-                                <small>{source.get('snippet', '')[:150]}...</small>
+                                <span class="source-title">📄 {source.get('source', 'Unknown')}{page_info}</span><br>
+                                <span class="source-snippet">{source.get('snippet', '')[:200]}...</span>
                             </div>
                             """, unsafe_allow_html=True)
                 else:
@@ -134,6 +161,6 @@ if st.button("🔍 Ask Agent Deen", type="primary", use_container_width=True):
 st.divider()
 st.markdown("""
 <div style="text-align: center; color: gray; font-size: 12px;">
-    Powered by Claude 3.5 Sonnet | Sources: BNM, AAOIFI, SC Malaysia, JAKIM
+    Powered by Ollama llama3.2 (100% Local & Free) | Sources: BNM, AAOIFI, SC Malaysia, JAKIM
 </div>
 """, unsafe_allow_html=True)

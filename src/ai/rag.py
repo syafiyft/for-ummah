@@ -1,18 +1,17 @@
 """
 RAG (Retrieval Augmented Generation) pipeline for Agent Deen.
-Uses direct Anthropic SDK (simplified for Python 3.14 compatibility).
+Uses Ollama for FREE local LLM inference.
 """
 
 from dataclasses import dataclass
 import logging
-
-from anthropic import Anthropic
 
 from src.core import settings
 from src.core.language import Language, detect_language
 from src.core.exceptions import AIError
 from src.vector_db import PineconeStore
 from .prompts import SHARIAH_PROMPT
+from .ollama_llm import OllamaLLM
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +35,8 @@ class RAGResponse:
 
 class RAGPipeline:
     """
-    RAG pipeline combining Pinecone retrieval with Claude.
-    Uses direct Anthropic SDK for Python 3.14 compatibility.
+    RAG pipeline combining Pinecone retrieval with Ollama LLM.
+    100% FREE local inference.
     """
     
     def __init__(self, vector_store: PineconeStore | None = None):
@@ -47,16 +46,16 @@ class RAGPipeline:
         Args:
             vector_store: Optional PineconeStore instance
         """
-        if not settings.anthropic_api_key:
-            raise AIError("ANTHROPIC_API_KEY not set")
-        
-        # Initialize Claude client
-        self.client = Anthropic(api_key=settings.anthropic_api_key)
+        # Initialize Ollama LLM (FREE)
+        self.llm = OllamaLLM(
+            model=settings.ollama_model,
+            base_url=settings.ollama_base_url,
+        )
         
         # Vector store (lazy load if not provided)
         self._vector_store = vector_store
         
-        logger.info(f"RAG Pipeline initialized with model: {settings.llm_model}")
+        logger.info(f"RAG Pipeline initialized with Ollama model: {settings.ollama_model}")
     
     @property
     def vector_store(self) -> PineconeStore:
@@ -106,19 +105,16 @@ class RAGPipeline:
             response_language=response_lang.display_name,
         )
         
-        # Call Claude
+        # Call Ollama LLM
         try:
-            message = self.client.messages.create(
-                model=settings.llm_model,
+            answer = self.llm.generate(
+                prompt,
+                temperature=settings.llm_temperature,
                 max_tokens=settings.llm_max_tokens,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
             )
-            answer = message.content[0].text
             
         except Exception as e:
-            logger.error(f"Claude API error: {e}")
+            logger.error(f"Ollama LLM error: {e}")
             raise AIError(f"Query failed: {e}")
         
         # Extract sources
@@ -139,9 +135,12 @@ class RAGPipeline:
         sources = []
         
         for doc in documents:
+            # Get file/title info for display
+            file_info = doc["metadata"].get("title", "") or doc["metadata"].get("filename", "")
+            
             source = {
                 "source": doc["metadata"].get("source", "Unknown"),
-                "file": doc["metadata"].get("file_path", ""),
+                "file": file_info,
                 "snippet": doc["text"][:200] + "..." if len(doc["text"]) > 200 else doc["text"],
                 "score": doc.get("score", 0),
             }
