@@ -4,7 +4,7 @@
 
 ✨ Ask questions in **Arabic (العربية)**, **English**, or **Bahasa Melayu**
 
-Powered by **Ollama** (100% Free & Local) with RAG from authoritative Shariah sources.
+Powered by **Ollama** (Free & Local) or **Claude Haiku** (High Quality) with RAG from authoritative Shariah sources.
 
 ---
 
@@ -87,12 +87,15 @@ cp .env.example .env
 PINECONE_API_KEY=your-pinecone-api-key
 PINECONE_INDEX=shariah-kb
 
+# Optional Auth (Required only for Claude)
+ANTHROPIC_API_KEY=sk-ant-api03-...
+
 # Optional settings
 DATA_DIR=data
 LOG_LEVEL=INFO
 ```
 
-> **Note:** No Anthropic/OpenAI keys required! Everything runs locally with Ollama 🎉
+> **Note:** Ollama runs 100% locally for free. An Anthropic API key is only needed if you want to use the Claude Haiku model.
 
 ### 5. Run the Application
 
@@ -134,13 +137,14 @@ for-ummah/
 │   ├── scrapers/          # Web scrapers (BNM, AAOIFI, JAKIM)
 │   ├── processors/        # PDF extraction, text chunking
 │   ├── vector_db/         # Pinecone + Ollama embeddings
-│   ├── ai/                # RAG pipeline, prompts, Ollama LLM
+│   ├── ai/                # RAG pipeline, prompts, Ollama + Claude LLMs
 │   ├── services/          # ChatService orchestrator
 │   └── api/               # FastAPI endpoints
 │
 ├── scripts/
 │   ├── reindex_with_pages.py  # Re-process PDFs with page tracking
-│   └── scrape_url.py          # Download & index PDF from URL
+│   ├── scrape_url.py          # Download & index PDF from URL
+│   └── translate_claude.py    # (Optional) Batch translation tool
 │
 └── data/                  # Shariah documents (PDFs)
 ```
@@ -151,7 +155,8 @@ for-ummah/
 
 | Component | Technology | Cost |
 |-----------|------------|------|
-| **LLM** | Ollama llama3.2 | FREE (local) |
+| **LLM (Local)** | Ollama llama3.2 | FREE (local) |
+| **LLM (Cloud)** | Claude 3.5 Haiku | ~$0.001/query (High Quality) |
 | **Embeddings** | Ollama nomic-embed-text | FREE (local) |
 | **Vector DB** | Pinecone | Free tier |
 | **Backend** | FastAPI | - |
@@ -164,7 +169,8 @@ for-ummah/
 
 - 🌍 **Trilingual:** Arabic (العربية), English, Bahasa Melayu
 - 📚 **Authoritative Sources:** BNM, AAOIFI, SC Malaysia, JAKIM
-- 🤖 **Local AI:** Ollama llama3.2 + RAG (no cloud costs!)
+- 🤖 **Hybrid AI:** Choose between **Ollama (Free)** or **Claude Haiku (Smart)**
+- 🔄 **Query Translation:** Auto-translates Malay/Arabic queries to English for better search precision
 - 📄 **Smart PDF:** Page-level tracking with Arabic OCR support
 - 🔍 **Source Citations:** Every answer shows its source page numbers
 
@@ -210,7 +216,11 @@ This will:
 ```bash
 curl -X POST "http://localhost:8000/chat" \
   -H "Content-Type: application/json" \
-  -d '{"question": "What is Murabaha?", "language": "en"}'
+  -d '{
+    "question": "What is Murabaha?", 
+    "language": "en",
+    "model": "claude" 
+  }'
 ```
 
 ---
