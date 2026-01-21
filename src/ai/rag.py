@@ -5,6 +5,7 @@ Supports both Ollama (FREE) and Claude Haiku (paid, better quality).
 
 from dataclasses import dataclass
 import logging
+import re
 
 from src.core import settings
 from src.core.language import Language, detect_language
@@ -96,7 +97,7 @@ class RAGPipeline:
         # Initialize LLM based on type
         if llm_type == LLM_CLAUDE and CLAUDE_AVAILABLE:
             try:
-                self.llm = ClaudeLLM()
+                self.llm = ClaudeLLM(api_key=settings.anthropic_api_key)
                 logger.info(f"RAG Pipeline initialized with Claude Haiku")
             except Exception as e:
                 logger.warning(f"Claude init failed: {e}, falling back to Ollama")
@@ -183,10 +184,19 @@ class RAGPipeline:
             source = d['metadata'].get('source', 'Unknown')
             title = d['metadata'].get('title', '')
             page = d['metadata'].get('page_number', '')
+
+            # Clean up filename/title for context (same as _extract_sources)
+            raw_filename = d['metadata'].get('filename', '')
+            clean_regex = r'^[a-f0-9]{12}[_\s]+'
+            clean_title = re.sub(clean_regex, '', title)
+            clean_filename = re.sub(clean_regex, '', raw_filename)
             
+            # Use title if available, otherwise cleaned filename
+            display_title = clean_title if title and title != "Unknown" else clean_filename
+
             source_label = f"[Source {i+1}: {source}"
-            if title:
-                source_label += f" - {title}"
+            if display_title:
+                source_label += f" - {display_title}"
             if page:
                 source_label += f", Page {page}"
             source_label += "]"
@@ -242,12 +252,15 @@ class RAGPipeline:
             raw_filename = doc["metadata"].get("filename", "")
             title = doc["metadata"].get("title", "")
             
-            # Clean up filename (remove 12-char hex ID if present)
-            # Matches "a1b2c3d4e5f6 " at start of string
-            clean_filename = re.sub(r'^[a-f0-9]{12}\s+', '', raw_filename)
+            # Clean up filename/title (remove 12-char hex ID if present)
+            # Matches "a1b2c3d4e5f6 " or "a1b2c3d4e5f6_" at start
+            clean_regex = r'^[a-f0-9]{12}[_\s]+'
+            
+            clean_filename = re.sub(clean_regex, '', raw_filename)
+            clean_title = re.sub(clean_regex, '', title)
             
             # Use title if available, otherwise cleaned filename
-            file_info = title if title and title != "Unknown" else clean_filename
+            file_info = clean_title if title and title != "Unknown" else clean_filename
             
             # Get page number and total pages if available
             page_num = doc["metadata"].get("page_number")

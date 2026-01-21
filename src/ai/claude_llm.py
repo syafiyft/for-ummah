@@ -170,4 +170,6 @@ def verify_claude_model():
 
 
 if __name__ == "__main__":
+    from dotenv import load_dotenv
+    load_dotenv()
     verify_claude_model()

@@ -172,12 +172,16 @@ src/
 
 ### Language & Model Updates (2026-01-21 Part 2)
 
-- **Query-Time Translation**: Malay/Arabic queries translated to English for better search precision.
-- **Claude Haiku Integration**: Added high-quality model option alongside free Ollama.
-- **Model Selector UI**: Users can choose between "🆓 Ollama" and "⚡ Claude Haiku".
-- **Strict Anti-Hallucination**: Removed fallback logic. Returns "not enough info" if no high-relevance chunks found.
-- **Cleaner Source Display**: Removed 12-char hex IDs from filenames.
-- **Language Response Fix**: `ensure_response_language` fallback ensures correct response language.
+- **Query-Time Translation**: ✅ Done. Malay/Arabic queries translated to English for better search precision.
+- **Claude Haiku Integration**: ✅ Done. Added high-quality model option.
+  - **Fix**: Resolved API key loading issue in `rag.py` to prevent silent fallback to Ollama.
+  - **Verification**: Added `scripts/verify_claude.py` and UI badge.
+- **Model Selector UI**: ✅ Done. Users can choose between "🆓 Ollama" and "⚡ Claude Haiku".
+- **Strict Anti-Hallucination**: ✅ Done. Returns "not enough info" if no high-relevance chunks found.
+- **Cleaner Source Display**: ✅ Done. Removed 12-char hex IDs from filenames in both Source Cards and LLM Context (e.g. `d5583ab...Debit Card` -> `Debit Card`).
+- **Language Response Fix**: ✅ Done. `ensure_response_language` fallback ensures correct response language.
+- **UI Improvements**: ✅ Done. Added "Model Used" badge (e.g., "Model: ⚡ Claude Haiku") to confirm active model.
+- **Re-indexing**: ✅ Done (Partial). Re-indexed with 5 new BNM documents (Debit/Credit Cards) for testing.
 
 ## Future Enhancements (ToDo)
 
@@ -185,9 +189,9 @@ src/
 
 | Task | Notes |
 |------|-------|
-| **Re-index PDFs** | Re-run ingestion to ensure high quality and fix missing "Takaful" content |
-| **Tune Relevance Threshold** | Experiment with 0.60 vs 0.65 threshold |
-| **Parallel Translation** | Implement async batch translation for faster indexing if needed |
+| **Full Re-scrape** | Remove `limit=5` in `src/scrapers/bnm.py` and scrape ALL documents. |
+| **Tune Relevance Threshold** | Experiment with 0.60 vs 0.65 threshold. |
+| **Parallel Translation** | Implement async batch translation for faster indexing if needed. |
 
 ### 🟡 Medium Priority
 

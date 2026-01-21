@@ -102,7 +102,7 @@ with st.expander("💡 Example Questions"):
             st.rerun()
 
 # Submit button
-if st.button("🔍 Ask Agent Deen", type="primary", use_container_width=True):
+if st.button("Ask Agent Deen", type="primary", use_container_width=True):
     if not question or not question.strip():
         st.warning("Please enter a question.")
     else:
@@ -132,11 +132,23 @@ if st.button("🔍 Ask Agent Deen", type="primary", use_container_width=True):
                     else:
                         st.markdown(data["answer"])
                     
-                    # Confidence badge
+                    # Confidence badge & Model Used
                     confidence = data.get("confidence", "Low")
+                    model_used = data.get("model_used", "ollama")
+                    
                     conf_class = f"confidence-{confidence.lower()}"
-                    st.markdown(f'<span class="{conf_class}">Confidence: **{confidence}**</span>', 
-                               unsafe_allow_html=True)
+                    model_label = "⚡ Claude Haiku" if "claude" in model_used else "🆓 Ollama"
+                    
+                    st.markdown(f'''
+                        <div style="margin-bottom: 15px;">
+                            <div style="margin-bottom: 5px;">
+                                <span class="{conf_class}">Confidence: **{confidence}**</span>
+                            </div>
+                            <div style="font-size: 13px; color: #888;">
+                                Model: <strong>{model_label}</strong>
+                            </div>
+                        </div>
+                    ''', unsafe_allow_html=True)
                     
                     # Check if this is an out-of-scope response (no sources should be shown)
                     answer_text = data.get("answer", "").lower()
