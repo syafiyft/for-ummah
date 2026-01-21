@@ -11,12 +11,18 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
 from src.services import ChatService
+from src.services.ingestion import IngestionService
 
 logger = logging.getLogger(__name__)
 
-# Service instance (lazy loaded)
+# Service instances (lazy loaded)
 _chat_service: ChatService | None = None
+_ingestion_service: IngestionService | None = None
 
 
 def get_chat_service() -> ChatService:
@@ -25,6 +31,14 @@ def get_chat_service() -> ChatService:
     if _chat_service is None:
         _chat_service = ChatService()
     return _chat_service
+
+
+def get_ingestion_service() -> IngestionService:
+    """Get or create ingestion service instance."""
+    global _ingestion_service
+    if _ingestion_service is None:
+        _ingestion_service = IngestionService()
+    return _ingestion_service
 
 
 @asynccontextmanager
@@ -77,6 +91,21 @@ class HealthResponse(BaseModel):
     timestamp: str
 
 
+class IngestUrlRequest(BaseModel):
+    """Request for URL ingestion."""
+    url: str
+
+
+class IngestResponse(BaseModel):
+    """Response for ingestion."""
+    status: str
+    file: str
+    pages: int = 0
+    chunks: int = 0
+    duration_seconds: float = 0.0
+    message: str | None = None
+
+
 # Endpoints
 @app.get("/", tags=["Root"])
 async def root():
@@ -123,6 +152,40 @@ async def chat(request: ChatRequest):
         
     except Exception as e:
         logger.error(f"Chat error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/ingest/url", response_model=IngestResponse, tags=["Ingestion"])
+async def ingest_url(request: IngestUrlRequest):
+    """
+    Ingest a document from a direct URL.
+    Downloads, extracts text, chunks, and indexes it.
+    """
+    try:
+        service = get_ingestion_service()
+        result = service.ingest_from_url(request.url)
+        return IngestResponse(**result)
+    except Exception as e:
+        logger.error(f"Ingestion error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/ingest/upload", response_model=IngestResponse, tags=["Ingestion"])
+async def ingest_upload(file: UploadFile = File(...)):
+    """
+    Ingest an uploaded PDF file.
+    Extracts text, chunks, and indexes it.
+    """
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+
+    try:
+        content = await file.read()
+        service = get_ingestion_service()
+        result = service.ingest_file(content, file.filename)
+        return IngestResponse(**result)
+    except Exception as e:
+        logger.error(f"Upload error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

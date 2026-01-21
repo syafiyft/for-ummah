@@ -43,3 +43,8 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Debug scripts
+scripts/debug_scraper.py
+scripts/reproduce_download.py
+scripts/test_ingestion.py

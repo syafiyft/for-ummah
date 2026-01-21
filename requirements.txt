@@ -4,6 +4,7 @@ uvicorn[standard]>=0.27.0
 pydantic>=2.5.0
 pydantic-settings>=2.1.0
 python-dotenv>=1.0.0
+python-multipart>=0.0.9
 
 # AI/LLM - simplified for Python 3.14
 anthropic>=0.18.0
