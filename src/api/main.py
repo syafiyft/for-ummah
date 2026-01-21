@@ -58,6 +58,7 @@ class ChatRequest(BaseModel):
     """Request body for chat endpoint."""
     question: str
     language: str | None = None  # Optional: "ar", "en", "ms"
+    model: str = "ollama"  # "ollama" (free) or "claude" (paid)
 
 
 class ChatResponse(BaseModel):
@@ -66,6 +67,7 @@ class ChatResponse(BaseModel):
     sources: list[dict]
     language: str
     confidence: str
+    model_used: str = "ollama"
     timestamp: str
 
 
@@ -112,9 +114,12 @@ async def chat(request: ChatRequest):
         response = service.ask(
             question=request.question,
             language=request.language,
+            model=request.model,
         )
         
-        return ChatResponse(**response.to_dict())
+        return ChatResponse(
+            **response.to_dict(),
+        )
         
     except Exception as e:
         logger.error(f"Chat error: {e}")

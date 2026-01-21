@@ -8,7 +8,7 @@ from datetime import datetime
 import logging
 
 from src.core.language import Language, detect_language
-from src.ai.rag import RAGPipeline, RAGResponse
+from src.ai.rag import RAGPipeline, RAGResponse, LLM_OLLAMA, LLM_CLAUDE
 from src.vector_db import PineconeStore
 
 logger = logging.getLogger(__name__)
@@ -21,6 +21,7 @@ class ChatResponse:
     sources: list[dict]
     language: str
     confidence: str
+    model_used: str
     timestamp: str
     
     def to_dict(self) -> dict:
@@ -29,6 +30,7 @@ class ChatResponse:
             "sources": self.sources,
             "language": self.language,
             "confidence": self.confidence,
+            "model_used": self.model_used,
             "timestamp": self.timestamp,
         }
 
@@ -39,7 +41,7 @@ class ChatService:
     
     Orchestrates:
     - Language detection
-    - RAG querying
+    - RAG querying (with Ollama or Claude)
     - Response formatting
     """
     
@@ -50,13 +52,34 @@ class ChatService:
         Args:
             vector_store: Optional vector store (will create if not provided)
         """
-        self.rag = RAGPipeline(vector_store)
+        self.vector_store = vector_store
+        # RAG pipelines are created per-request based on model choice
+        self._rag_ollama = None
+        self._rag_claude = None
         logger.info("ChatService initialized")
+    
+    def _get_rag(self, model: str) -> RAGPipeline:
+        """Get or create RAG pipeline for the specified model."""
+        if model == LLM_CLAUDE:
+            if self._rag_claude is None:
+                self._rag_claude = RAGPipeline(
+                    vector_store=self.vector_store,
+                    llm_type=LLM_CLAUDE,
+                )
+            return self._rag_claude
+        else:
+            if self._rag_ollama is None:
+                self._rag_ollama = RAGPipeline(
+                    vector_store=self.vector_store,
+                    llm_type=LLM_OLLAMA,
+                )
+            return self._rag_ollama
     
     def ask(
         self,
         question: str,
         language: str | None = None,
+        model: str = "ollama",
     ) -> ChatResponse:
         """
         Process a user question.
@@ -64,6 +87,7 @@ class ChatService:
         Args:
             question: User's question in any supported language
             language: Preferred response language code ("ar", "en", "ms")
+            model: LLM to use ("ollama" or "claude")
             
         Returns:
             ChatResponse with answer and metadata
@@ -76,8 +100,11 @@ class ChatService:
             except ValueError:
                 pass
         
+        # Get RAG pipeline for selected model
+        rag = self._get_rag(model)
+        
         # Query RAG
-        rag_response = self.rag.query(
+        rag_response = rag.query(
             question=question,
             language_preference=lang_pref,
         )
@@ -87,6 +114,7 @@ class ChatService:
             sources=rag_response.sources,
             language=rag_response.query_language.value,
             confidence=rag_response.confidence,
+            model_used=rag_response.model_used,
             timestamp=datetime.now().isoformat(),
         )
     
@@ -94,5 +122,6 @@ class ChatService:
         """Check service health."""
         return {
             "status": "healthy",
-            "model": self.rag.llm.model,
+            "models_available": ["ollama", "claude"],
         }
+

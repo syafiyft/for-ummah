@@ -21,6 +21,8 @@ class TextChunk:
     metadata: dict
     page_number: int | None = None  # Source page number (if available)
     total_pages: int | None = None  # Total pages in source document
+    language: str = "en"  # ISO 639-1 code (en, ms, ar)
+    original_text: str | None = None  # Original untranslated text for display
     
     def to_dict(self) -> dict:
         result = {
@@ -28,12 +30,15 @@ class TextChunk:
             "chunk_index": self.chunk_index,
             "start_char": self.start_char,
             "end_char": self.end_char,
+            "language": self.language,
             **self.metadata,
         }
         if self.page_number is not None:
             result["page_number"] = self.page_number
         if self.total_pages is not None:
             result["total_pages"] = self.total_pages
+        if self.original_text is not None:
+            result["original_text"] = self.original_text
         return result
 
 

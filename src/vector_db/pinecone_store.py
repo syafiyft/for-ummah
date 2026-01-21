@@ -95,7 +95,7 @@ class PineconeStore:
         for chunk in chunks:
             embedding = self.embeddings.embed(chunk.text)
             
-            # Build metadata with page number if available
+            # Build metadata with page number and language
             metadata = {
                 "text": chunk.text[:1000],  # Pinecone metadata limit
                 **{k: str(v)[:500] for k, v in chunk.metadata.items()},
@@ -104,6 +104,18 @@ class PineconeStore:
             # Add page number if available
             if hasattr(chunk, 'page_number') and chunk.page_number is not None:
                 metadata["page_number"] = chunk.page_number
+            
+            # Add total pages if available
+            if hasattr(chunk, 'total_pages') and chunk.total_pages is not None:
+                metadata["total_pages"] = chunk.total_pages
+            
+            # Add language for trilingual indexing
+            if hasattr(chunk, 'language') and chunk.language:
+                metadata["language"] = chunk.language
+            
+            # Add original_text for source display (preserves original language)
+            if hasattr(chunk, 'original_text') and chunk.original_text:
+                metadata["original_text"] = chunk.original_text[:1000]
             
             vectors.append({
                 "id": f"chunk_{count}_{hash(chunk.text) % 1000000}",

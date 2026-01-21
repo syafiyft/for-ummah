@@ -64,17 +64,32 @@ def detect_language(text: str) -> Language:
     
     # Check for Malay - common words
     malay_markers = [
+        # Common words
         'adalah', 'dengan', 'untuk', 'yang', 'ini', 'itu',
         'boleh', 'tidak', 'ada', 'saya', 'kita', 'dalam',
         'kepada', 'daripada', 'seperti', 'oleh', 'tetapi',
-        'atau', 'jika', 'apabila', 'kerana', 'supaya'
+        'atau', 'jika', 'apabila', 'kerana', 'supaya',
+        # Question words
+        'apakah', 'bagaimana', 'mengapa', 'siapa', 'bila',
+        'adakah', 'berapa', 'mana', 'kenapa', 'macam',
+        # Islamic finance terms in Malay context
+        'perbankan', 'kewangan', 'patuh', 'syariah', 'halal',
+        'haram', 'faedah', 'riba', 'pinjaman', 'pelaburan',
+        # Common verbs
+        'mahu', 'hendak', 'perlu', 'ingin', 'akan',
+        'telah', 'sudah', 'sedang', 'dapat', 'bolehkah',
     ]
     
     text_lower = text.lower()
     malay_matches = sum(1 for word in malay_markers if word in text_lower)
     
+    # Lower threshold for short queries (e.g., "Apakah itu Takaful?")
+    word_count = len(text.split())
+    if word_count <= 5 and malay_matches >= 1:
+        return Language.MALAY
+    
     # If contains multiple Malay markers, likely Malay
-    if malay_matches >= 3:
+    if malay_matches >= 2:
         return Language.MALAY
     
     return Language.ENGLISH
