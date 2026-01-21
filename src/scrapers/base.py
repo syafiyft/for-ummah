@@ -326,6 +326,33 @@ class BaseScraper(ABC):
 
         return clean_title if clean_title else "document"
 
+    def _download_with_playwright_sync(self, url: str, file_path: Path) -> bool:
+        """
+        Internal sync method for Playwright download.
+        This is called in a separate thread to avoid blocking asyncio.
+        """
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                context = browser.new_context(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    accept_downloads=True
+                )
+                page = context.new_page()
+
+                # Set up download handling
+                with page.expect_download(timeout=60000) as download_info:
+                    page.goto(url, timeout=60000)
+
+                download = download_info.value
+                download.save_as(str(file_path))
+                browser.close()
+
+            return file_path.exists() and file_path.stat().st_size > 0
+        except Exception as e:
+            logger.warning(f"Playwright download failed: {e}")
+            return False
+
     def scrape_from_url(self, url: str, custom_title: str | None = None) -> ScrapedDocument | None:
         """
         Download and register a PDF from a direct URL.
@@ -340,6 +367,9 @@ class BaseScraper(ABC):
         Returns:
             ScrapedDocument if successful, None if failed
         """
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+
         # Extract clean title from URL if not provided
         title = custom_title or self._sanitize_title_from_url(url)
 
@@ -362,34 +392,33 @@ class BaseScraper(ABC):
 
         # Try Playwright first (for WAF bypass)
         if PLAYWRIGHT_AVAILABLE:
+            # Check if we're in an asyncio loop (FastAPI context)
             try:
-                with sync_playwright() as p:
-                    browser = p.chromium.launch(headless=True)
-                    context = browser.new_context(
-                        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                        accept_downloads=True
-                    )
-                    page = context.new_page()
+                loop = asyncio.get_running_loop()
+                is_async_context = True
+            except RuntimeError:
+                is_async_context = False
 
-                    # Set up download handling
-                    with page.expect_download(timeout=60000) as download_info:
-                        page.goto(url, timeout=60000)
+            if is_async_context:
+                # Run Playwright in a thread pool to avoid blocking asyncio
+                logger.info("Running Playwright in thread pool (async context detected)")
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(self._download_with_playwright_sync, url, file_path)
+                    success = future.result(timeout=120)
+            else:
+                # Direct call for CLI scripts
+                success = self._download_with_playwright_sync(url, file_path)
 
-                    download = download_info.value
-                    download.save_as(str(file_path))
-                    browser.close()
-
-                if file_path.exists() and file_path.stat().st_size > 0:
-                    logger.info(f"Downloaded via Playwright: {filename}")
-                    return ScrapedDocument(
-                        source=self.source,
-                        url=url,
-                        file_path=file_path,
-                        title=title,
-                    )
-
-            except Exception as e:
-                logger.warning(f"Playwright download failed: {e}, trying fallback...")
+            if success:
+                logger.info(f"Downloaded via Playwright: {filename}")
+                return ScrapedDocument(
+                    source=self.source,
+                    url=url,
+                    file_path=file_path,
+                    title=title,
+                )
+            else:
+                logger.warning("Playwright download failed, trying fallback...")
 
         # Fallback to requests
         result = self._download_pdf_fallback(url, file_path)
