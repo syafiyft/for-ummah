@@ -203,6 +203,48 @@ src/
 
 ---
 
+## Recent Changes (2026-01-22)
+
+### Source Management UI (Upload & URL)
+
+- `app.py` - Added **"Manage Sources"** page with:
+  - **Add by URL**: Download PDFs from direct URLs (with WAF bypass via Playwright)
+  - **Upload PDF**: Upload local PDFs for indexing
+- `src/api/main.py` - New endpoints:
+  - `POST /ingest/url` - Ingest document from URL
+  - `POST /ingest/upload` - Ingest uploaded PDF file
+- `src/services/ingestion.py` - NEW service for ingestion pipeline orchestration
+- `src/scrapers/manual.py` - NEW scraper for user-submitted documents
+- `requirements.txt` - Added `python-multipart` for file upload support
+
+### Playwright Async Fix (Critical Bug Fix)
+
+- **Problem:** Playwright sync API conflicted with FastAPI's asyncio loop, causing "Playwright Sync API inside asyncio loop" error
+- **Solution:** Added `_download_with_playwright_sync()` helper in `src/scrapers/base.py`, runs in `ThreadPoolExecutor` to avoid blocking asyncio
+- URL scraping now works correctly from the Streamlit UI
+
+### Clickable Source Snippets with PDF Viewer
+
+- `src/api/main.py` - New endpoints:
+  - `GET /pdf/{source}/{filename}` - Serve PDFs from data directory with security checks
+  - `GET /pdf/list` - List all available PDFs
+- `src/ai/rag.py` - Added `filename` field to source response (original filename for PDF URL)
+- `app.py` - Source cards are now **expandable**:
+  - Click to expand and see snippet + "Open PDF in Browser" button
+  - PDFs open in new tab at specific page (`#page=N` fragment)
+  - Fallback for legacy chunks missing filename metadata
+- Fuzzy filename matching in API for files with spaces/special chars
+
+---
+
+## Completed Features (Updated 2026-01-22)
+
+| Feature | Status | Details |
+|---------|--------|---------|
+| **Source Management UI** | ✅ Done | Upload PDF or Add by URL in Streamlit |
+| **PDF Viewer** | ✅ Done | Click source snippet → open PDF at page |
+| **Playwright Async Fix** | ✅ Done | ThreadPoolExecutor wrapper for FastAPI |
+
 ## Run Commands
 
 ```bash
