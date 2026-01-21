@@ -167,8 +167,10 @@ def show_chat_page():
                         # Sources (deduplicated) - skip if out of scope
                         if data.get("sources") and not is_out_of_scope:
                             st.markdown("### Sources / المصادر")
+                            st.caption("💡 Click on a source to view the PDF at that page")
+                            
                             seen_sources = set()
-                            for source in data["sources"]:
+                            for idx, source in enumerate(data["sources"]):
                                 # Deduplicate by source + snippet combo
                                 source_key = f"{source.get('source', '')}-{source.get('snippet', '')[:50]}"
                                 if source_key in seen_sources:
@@ -176,22 +178,45 @@ def show_chat_page():
                                 seen_sources.add(source_key)
                                 
                                 # Build source info with file and page
-                                source_info = source.get('source', 'Unknown')
-                                if source.get('file'):
-                                    source_info += f" | 📖 {source.get('file')}"
-                                if source.get('page'):
-                                    # Show Page X/Total format if total_pages available
-                                    if source.get('total_pages'):
-                                        source_info += f" | 📄 Page {source.get('page')}/{source.get('total_pages')}"
-                                    else:
-                                        source_info += f" | 📄 Page {source.get('page')}"
+                                source_name = source.get('source', 'Unknown')
+                                file_display = source.get('file', '')  # Display name (cleaned)
+                                file_name = source.get('filename', '') or file_display  # Fallback to display name
+                                page_num = source.get('page', 1)
+                                total_pages = source.get('total_pages', '')
+                                snippet = source.get('snippet', '')[:200]
                                 
-                                st.markdown(f"""
-                                <div class="source-card">
-                                    <span class="source-title">{source_info}</span><br>
-                                    <span class="source-snippet">{source.get('snippet', '')[:200]}...</span>
-                                </div>
-                                """, unsafe_allow_html=True)
+                                # Build page display
+                                page_display = f"Page {page_num}"
+                                if total_pages:
+                                    page_display = f"Page {page_num}/{total_pages}"
+                                
+                                # Create unique key for expander
+                                expander_key = f"source_{idx}_{file_name}_{page_num}"
+                                
+                                # Clickable source card using expander
+                                with st.expander(f"📖 {source_name} | {file_display} | 📄 {page_display}"):
+                                    st.markdown(f"**Snippet:** {snippet}...")
+                                    
+                                    # PDF Viewer Link
+                                    if file_name:
+                                        # URL encode the filename for special characters
+                                        from urllib.parse import quote
+                                        
+                                        # Ensure .pdf extension
+                                        if not file_name.lower().endswith('.pdf'):
+                                            file_name = file_name + '.pdf'
+                                        
+                                        encoded_filename = quote(file_name, safe='')
+                                        
+                                        # Construct PDF URL with page fragment
+                                        pdf_url = f"{API_URL}/pdf/{source_name.lower()}/{encoded_filename}#page={page_num}"
+                                        
+                                        st.markdown("---")
+                                        st.markdown(f"**📄 View the original PDF document at page {page_num}**")
+                                        st.link_button("📖 Open PDF in Browser ↗", pdf_url, use_container_width=True)
+                                        st.caption("💡 The PDF will open in a new tab at the referenced page.")
+                                    else:
+                                        st.info("ℹ️ PDF preview not available. This document was indexed before file tracking was added.")
                     else:
                         st.error(f"Error: {response.text}")
                         

@@ -273,7 +273,8 @@ class RAGPipeline:
             
             source = {
                 "source": doc["metadata"].get("source", "Unknown"),
-                "file": file_info,
+                "file": file_info,  # Display name (cleaned)
+                "filename": raw_filename,  # Original filename for PDF URL
                 "page": page_num,
                 "total_pages": total_pages,
                 "snippet": snippet,
