@@ -24,6 +24,7 @@
 | **Scope Detection** | ✅ Done | Rejects off-topic questions |
 | **Anti-Hallucination Prompt** | ✅ Done | Stricter source grounding |
 | **Sentence-Based Chunking** | ✅ Done | Clean chunks with full sentences, no broken words |
+| **Language Response Fix** | ✅ Done | Translation fallback ensures correct response language |
 
 ---
 
@@ -155,40 +156,46 @@ src/
   - No more broken words like "e, including where–" at chunk starts
 - Re-indexed all documents: 7600 cleaner chunks (down from 8503)
 
+### Language Response Fix (2026-01-21)
+
+- **Problem:** LLM (llama3.2) often responded in English even when asked in Malay
+- **Solution:** Two-layer approach:
+  1. Stronger prompt enforcement with explicit language rules
+  2. Translation fallback using `langdetect` + `deep-translator`
+- `src/ai/translator.py` - NEW module for language enforcement
+- `src/ai/prompts.py` - Language instruction at START of prompt
+- `src/ai/rag.py` - Integrated translator after LLM response
+- `src/core/language.py` - Added more Malay markers for detection
+- `requirements.txt` - Added `langdetect`, `deep-translator`
+
 ---
 
-## Improvements Needed
+### Language & Model Updates (2026-01-21 Part 2)
 
-### 1. Page Format Enhancement
+- **Query-Time Translation**: Malay/Arabic queries translated to English for better search precision.
+- **Claude Haiku Integration**: Added high-quality model option alongside free Ollama.
+- **Model Selector UI**: Users can choose between "🆓 Ollama" and "⚡ Claude Haiku".
+- **Strict Anti-Hallucination**: Removed fallback logic. Returns "not enough info" if no high-relevance chunks found.
+- **Cleaner Source Display**: Removed 12-char hex IDs from filenames.
+- **Language Response Fix**: `ensure_response_language` fallback ensures correct response language.
 
-**Current:** `Page 139`
-**Target:** `Page 139/188`
+## Future Enhancements (ToDo)
 
-Update these files:
+### 🔴 High Priority
 
-- `src/processors/pdf_extractor.py` - Track total pages in `ExtractionResult`
-- `src/processors/chunker.py` - Include total pages in `TextChunk` metadata
-- `src/ai/rag.py` - Pass total pages to source display
-- `app.py` - Display as "Page X/Total"
+| Task | Notes |
+|------|-------|
+| **Re-index PDFs** | Re-run ingestion to ensure high quality and fix missing "Takaful" content |
+| **Tune Relevance Threshold** | Experiment with 0.60 vs 0.65 threshold |
+| **Parallel Translation** | Implement async batch translation for faster indexing if needed |
 
-### 2. Multiple Source Citation
+### 🟡 Medium Priority
 
-**Problem:** Answer only shows one source even when derived from multiple
-**Solution:** Update prompt and answer formatting to list all relevant sources
-
-### 3. Reduce Hallucination
-
-**Problem:** LLM adds general knowledge not from Shariah sources
-**Current prompt** has anti-hallucination instructions but needs strengthening
-
-Improvements needed in `src/ai/prompts.py`:
-
-```
-- Add: "If information is not in the context, say so clearly"
-- Add: "DO NOT add information from your training data"
-- Add: "Quote directly from sources when possible"
-- Add: "Start answer with 'Based on [Source]...'"
-```
+| Task | Notes |
+|------|-------|
+| **Add more sources** | SC Malaysia, JAKIM fatwas |
+| **Source deduplication** | Better deduplication of overlapping chunks |
+| **Multiple source citation** | Explicitly list all contributing sources in answer text |
 
 ---
 
@@ -198,43 +205,23 @@ Improvements needed in `src/ai/prompts.py`:
 # Install dependencies
 pip install -r requirements.txt
 
-# Install Playwright browser (first time only)
+# Install Playwright browser
 playwright install chromium
 
-# Ensure Ollama is running
-ollama serve
-
-# Pull models (first time only)
-ollama pull llama3.2
-ollama pull nomic-embed-text
-
-# Run API
+# Run API (backend)
 uvicorn src.api.main:app --reload --port 8000
 
-# Run Streamlit UI (in separate terminal)
+# Run Streamlit UI (frontend)
 streamlit run app.py
 
-# Run BNM scraper (optional - to download new documents)
-python -m src.scrapers.bnm
+# Run Claude Translation (optional - one time)
+# python scripts/translate_claude.py
 ```
-
----
 
 ## Environment (.env)
 
 ```env
 PINECONE_API_KEY=your-pinecone-key
 PINECONE_INDEX=shariah-kb
+ANTHROPIC_API_KEY=sk-ant-... (Optional - for Claude)
 ```
-
-**No Anthropic/OpenAI keys needed!** 🎉
-
----
-
-## Next Steps (Priority Order)
-
-1. [ ] Implement page X/Total format in PDF extractor & UI
-2. [ ] Update prompt to reduce hallucination (stricter source grounding)
-3. [ ] Add multiple source citation support in answers
-4. [ ] Add more Shariah documents (SC Malaysia, JAKIM)
-5. [ ] Test with diverse Islamic finance queries

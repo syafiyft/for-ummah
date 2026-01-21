@@ -58,8 +58,8 @@ st.markdown("Ask questions in *Arabic (العربية)*, *English*, or *Bahasa M
 
 st.divider()
 
-# Language preference
-col1, col2 = st.columns([3, 1])
+# Language and Model selection
+col1, col2, col3 = st.columns([2, 1, 1])
 with col2:
     language = st.selectbox(
         "Response Language",
@@ -70,6 +70,16 @@ with col2:
             "ar": "العربية (Arabic)",
             "ms": "Bahasa Melayu"
         }.get(x, x),
+    )
+with col3:
+    model = st.selectbox(
+        "AI Model",
+        options=["ollama", "claude"],
+        format_func=lambda x: {
+            "ollama": "🆓 Ollama (Free)",
+            "claude": "⚡ Claude Haiku"
+        }.get(x, x),
+        help="Claude Haiku: Faster & better responses (~$0.001/query)",
     )
 
 # Question input
@@ -104,6 +114,7 @@ if st.button("🔍 Ask Agent Deen", type="primary", use_container_width=True):
                     json={
                         "question": question,
                         "language": language,
+                        "model": model,
                     },
                     timeout=60,
                 )

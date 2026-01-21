@@ -25,3 +25,7 @@ streamlit>=1.31.0
 
 # Utilities
 tqdm>=4.66.0
+
+# Language Detection & Translation
+langdetect>=1.0.9
+deep-translator>=1.11.0
