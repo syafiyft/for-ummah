@@ -48,3 +48,7 @@ htmlcov/
 scripts/debug_scraper.py
 scripts/reproduce_download.py
 scripts/test_ingestion.py
+
+# Documentation
+*.md
+!README.md
