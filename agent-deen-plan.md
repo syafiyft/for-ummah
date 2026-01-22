@@ -199,7 +199,33 @@ src/
 |------|-------|
 | **Add more sources** | SC Malaysia, JAKIM fatwas |
 | **Source deduplication** | Better deduplication of overlapping chunks |
+
 | **Multiple source citation** | Explicitly list all contributing sources in answer text |
+
+### 🔵 Feature Plan: Chat History (Next)
+
+To implement the requested Chat History feature, the following architecture is proposed:
+
+1. **Storage Layer**:
+    - Use `data/chat_history.json` to persist conversations.
+    - Structure: `session_id -> { title, created_at, messages: [] }`
+
+2. **State Management**:
+    - `st.session_state.current_session_id`: Tracks active conversation.
+    - `st.session_state.messages`: List of message objects `{"role": "user/assistant", "content": "..."}`.
+
+3. **UI Changes**:
+    - **Sidebar**:
+        - Add "➕ New Chat" button at the top.
+        - List previous chat titles (clickable) under a "History" section.
+    - **Main Area**:
+        - Switch from single `st.text_area` to `st.chat_input` (bottom-fixed).
+        - Use `st.chat_message()` to render full conversation history.
+
+4. **Logic**:
+    - On app load, read history from JSON.
+    - On new message, append to current session and save to disk.
+    - Auto-generate short title from first user message.
 
 ---
 

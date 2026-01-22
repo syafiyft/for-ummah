@@ -3,8 +3,10 @@
 Trilingual AI Shariah Compliance Assistant
 """
 
+
 import streamlit as st
 import requests
+from streamlit_option_menu import option_menu
 
 # Configuration
 API_URL = "http://localhost:8000"
@@ -14,9 +16,10 @@ st.set_page_config(
     page_title="Agent Deen | وكيل الدين",
     page_icon="🌙",
     layout="centered",
+    initial_sidebar_state="expanded"
 )
 
-# Custom CSS for RTL Arabic support
+# Custom CSS for RTL Arabic support and generic styling
 st.markdown("""
 <style>
     .arabic-text {
@@ -51,8 +54,54 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
 # Sidebar Navigation
-page = st.sidebar.radio("Navigation", ["💬 Chat", "📚 Manage Sources"])
+with st.sidebar:
+    # Sidebar Logo/Header (ChatGPT Style: Top Left)
+    st.markdown("""
+        <div style="display: flex; align-items: center; gap: 10px; padding-bottom: 20px;">
+            <div style="font-size: 24px;">🌙</div>
+            <div style="font-size: 20px; font-weight: bold; color: white;">Agent Deen</div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Modern Sidebar Menu (ChatGPT Style: Subtle Gray Selection)
+    page = option_menu(
+        menu_title=None, 
+        options=["Chat", "Manage Sources"], 
+        icons=["chat-left-text", "database-fill"], # Updated icons to match standard app feels
+        menu_icon="cast", 
+        default_index=0,
+        styles={
+            "container": {"padding": "0!important", "background-color": "transparent"},
+            "icon": {"color": "#fafafa", "font-size": "14px"}, 
+            "nav-link": {
+                "font-size": "14px", 
+                "text-align": "left", 
+                "margin": "0px", 
+                "margin-bottom": "5px",
+                "color": "#fafafa",
+                "--hover-color": "#2A2B32"
+            },
+            "nav-link-selected": {
+                "background-color": "#343541", # ChatGPT-like dark gray selection
+                "color": "white",
+                "font-weight": "500",
+                "border": "1px solid #565869" # Subtle border
+            },
+        }
+    )
+    
+    st.divider()
+
+
+
+    
+    st.divider()
+    
+    # Placeholder for Future Chat History
+    # st.subheader("History")
+    # st.caption("Chat history features coming soon...")
 
 def show_chat_page():
     # Header
@@ -273,7 +322,7 @@ def show_sources_page():
                     st.error(f"Connection Error: {e}")
 
 # Router
-if page == "💬 Chat":
+if page == "Chat":
     show_chat_page()
 else:
     show_sources_page()
