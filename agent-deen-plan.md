@@ -16,6 +16,7 @@
 | **API Backend** | ✅ Done | FastAPI at port 8000 |
 | **Streamlit UI** | ✅ Done | Trilingual interface with source display |
 | **Language Detection** | ✅ Done | Arabic/English/Malay auto-detect |
+| **Chat History** | ✅ Done | Sidebar with session list, persistent storage |
 | **Page Number Tracking** | ✅ Done | Chunks include source page numbers |
 | **Re-indexing Script** | ✅ Done | `scripts/reindex_with_pages.py` created |
 | **Source Citations** | ✅ Done | Displays source, file, and page number |
@@ -35,8 +36,8 @@
 | Task | Notes |
 |------|-------|
 | **Better LLM Model** | Consider GPT-4 or Claude for better instruction following (current llama3.2 sometimes ignores prompt rules) |
-| **Relevance Score Threshold** | Skip sources with low relevance score to avoid unrelated context |
-| **Multiple source citation** | When answer comes from multiple sources, list all of them in the answer section |
+| ~~**Relevance Score Threshold**~~ | ✅ **COMPLETED** - Configurable via `rag_relevance_threshold` setting (default: 0.65) |
+| ~~**Multiple source citation**~~ | ✅ **COMPLETED** - LLM prompt updated to require inline citations and "Sources:" footer |
 
 ### 🟡 Medium Priority
 
@@ -52,7 +53,7 @@
 |------|-------|
 | **UI improvements** | Better mobile responsiveness |
 | **Export answers** | Save Q&A to PDF |
-| **Chat history** | Conversation context |
+| ~~**Chat history**~~ | ✅ **COMPLETED** - See 2026-01-22 changes |
 
 ---
 
@@ -189,8 +190,8 @@ src/
 
 | Task | Notes |
 |------|-------|
-| **Full Re-scrape** | Remove `limit=5` in `src/scrapers/bnm.py` and scrape ALL documents. |
-| **Tune Relevance Threshold** | Experiment with 0.60 vs 0.65 threshold. |
+| ~~**Full Re-scrape**~~ | ✅ **COMPLETED** - Removed `limit=5` from `src/scrapers/bnm.py`. Run `python -m src.scrapers.bnm` to scrape all. |
+| ~~**Tune Relevance Threshold**~~ | ✅ **COMPLETED** - Now configurable via `rag_relevance_threshold` in settings (or `RAG_RELEVANCE_THRESHOLD` env var) |
 | **Parallel Translation** | Implement async batch translation for faster indexing if needed. |
 
 ### 🟡 Medium Priority
@@ -199,11 +200,51 @@ src/
 |------|-------|
 | **Add more sources** | SC Malaysia, JAKIM fatwas |
 | **Source deduplication** | Better deduplication of overlapping chunks |
-| **Multiple source citation** | Explicitly list all contributing sources in answer text |
+
+### ✅ Chat History Feature - COMPLETED (2026-01-22)
+
+The Chat History feature has been fully implemented with the following architecture:
+
+1. **Storage Layer**:
+    - API-based persistence via FastAPI endpoints
+    - `src/services/history.py` - History service with JSON file storage
+    - Structure: `session_id -> { title, created_at, messages: [] }`
+
+2. **State Management**:
+    - `st.session_state.current_session_id`: Tracks active conversation
+    - `st.session_state.messages`: List of message objects
+
+3. **UI Implementation**:
+    - **Sidebar**:
+        - "New Chat" button at top
+        - Recent Chats list with session switching
+        - Active chat highlighted with `#FF4B4B` (Streamlit red)
+    - **Main Area**:
+        - Full conversation display with `st.chat_message()`
+
+4. **API Endpoints**:
+    - `GET /history/chats` - List all chat sessions
+    - `GET /history/chat/{id}` - Get specific chat session
+    - `POST /history/chat` - Create/update chat session
+
+5. **Files Modified**:
+    - `app.py` - Chat history UI integration
+    - `src/api/main.py` - History API endpoints
+    - `src/services/history.py` - History service (NEW)
 
 ---
 
 ## Recent Changes (2026-01-22)
+
+### Chat History Feature
+
+- **Sidebar Navigation**: "New Chat" button + recent chats list with clickable session switching
+- **Persistent Storage**: API-based history service with JSON file backend
+- **UI Highlights**: Active chat highlighted with `#FF4B4B` (Streamlit red)
+- **Files**:
+  - `app.py` - Chat history UI integration
+  - `src/api/main.py` - New endpoints: `GET /history/chats`, `GET /history/chat/{id}`, `POST /history/chat`
+  - `src/services/history.py` - NEW history service
 
 ### Source Management UI (Upload & URL)
 
@@ -235,15 +276,31 @@ src/
   - Fallback for legacy chunks missing filename metadata
 - Fuzzy filename matching in API for files with spaces/special chars
 
+### High-Priority Task Completion
+
+- **Full Re-scrape Ready**: Removed `limit=5` from `src/scrapers/bnm.py` (line 208)
+  - Run `python -m src.scrapers.bnm` to scrape all BNM documents
+- **Configurable Relevance Threshold**: Added `rag_relevance_threshold` to `src/core/config.py`
+  - Default: 0.65 (tune via `.env` with `RAG_RELEVANCE_THRESHOLD=0.60`)
+  - `src/ai/rag.py` now uses `settings.rag_relevance_threshold`
+- **Multiple Source Citation**: Enhanced `src/ai/prompts.py` instruction #7
+  - LLM now required to cite sources inline ("According to Source 1...")
+  - LLM must add "Sources:" footer listing all sources used
+  - Multilingual: "Sumber:" (Malay), "المصادر:" (Arabic)
+
 ---
 
 ## Completed Features (Updated 2026-01-22)
 
 | Feature | Status | Details |
 |---------|--------|---------|
+| **Chat History** | ✅ Done | Sidebar with session list, persistent API storage |
 | **Source Management UI** | ✅ Done | Upload PDF or Add by URL in Streamlit |
 | **PDF Viewer** | ✅ Done | Click source snippet → open PDF at page |
 | **Playwright Async Fix** | ✅ Done | ThreadPoolExecutor wrapper for FastAPI |
+| **Full Re-scrape Ready** | ✅ Done | Removed `limit=5` from BNM scraper |
+| **Configurable Relevance Threshold** | ✅ Done | `rag_relevance_threshold` in config (default 0.65) |
+| **Multiple Source Citation** | ✅ Done | Enhanced prompt for inline + footer citations |
 
 ## Run Commands
 

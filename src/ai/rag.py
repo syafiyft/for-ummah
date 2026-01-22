@@ -154,12 +154,13 @@ class RAGPipeline:
         docs = self.vector_store.search(search_query, top_k=top_k or settings.rag_top_k)
         
         # Filter low-relevance chunks to prevent hallucination
-        MIN_RELEVANCE_SCORE = 0.65
-        relevant_docs = [d for d in docs if d.get("score", 0) >= MIN_RELEVANCE_SCORE]
-        
+        # Threshold is configurable via settings.rag_relevance_threshold (default: 0.65)
+        threshold = settings.rag_relevance_threshold
+        relevant_docs = [d for d in docs if d.get("score", 0) >= threshold]
+
         # Log filtering info
         if len(relevant_docs) < len(docs):
-            logger.info(f"Filtered {len(docs) - len(relevant_docs)} low-relevance chunks (below {MIN_RELEVANCE_SCORE})")
+            logger.info(f"Filtered {len(docs) - len(relevant_docs)} low-relevance chunks (below {threshold})")
         
         # If no relevant docs, return early with "not enough info" message
         if not relevant_docs:
