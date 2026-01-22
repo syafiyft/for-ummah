@@ -93,6 +93,9 @@ ANTHROPIC_API_KEY=sk-ant-api03-...
 # Optional settings
 DATA_DIR=data
 LOG_LEVEL=INFO
+
+# Optional RAG tuning
+RAG_RELEVANCE_THRESHOLD=0.65  # Min relevance score (0.60-0.70)
 ```
 
 > **Note:** Ollama runs 100% locally for free. An Anthropic API key is only needed if you want to use the Claude Haiku model.
@@ -139,6 +142,9 @@ for-ummah/
 │   ├── vector_db/         # Pinecone + Ollama embeddings
 │   ├── ai/                # RAG pipeline, prompts, Ollama + Claude LLMs
 │   ├── services/          # ChatService orchestrator
+│   │   ├── chat.py        # ChatService orchestrator
+│   │   ├── history.py     # Chat history persistence
+│   │   └── ingestion.py   # Document ingestion pipeline
 │   └── api/               # FastAPI endpoints
 │
 ├── scripts/
@@ -173,6 +179,9 @@ for-ummah/
 - 🔄 **Query Translation:** Auto-translates Malay/Arabic queries to English for better search precision
 - 📄 **Smart PDF:** Page-level tracking with Arabic OCR support
 - 🔍 **Source Citations:** Every answer shows its source page numbers
+- 💬 **Chat History:** Persistent conversation sessions with sidebar navigation
+- 📤 **Source Management:** Upload PDFs or add by URL directly in UI
+- 🔗 **PDF Viewer:** Click source citations to open PDF at exact page
 
 ---
 
@@ -210,6 +219,12 @@ This will:
 | `/chat` | POST | Main chat endpoint |
 | `/health` | GET | Health check |
 | `/docs` | GET | Swagger documentation |
+| `/history/chats` | GET | List all chat sessions |
+| `/history/chat/{id}` | GET | Get specific chat session |
+| `/history/chat` | POST | Create/update chat session |
+| `/ingest/url` | POST | Ingest document from URL |
+| `/ingest/upload` | POST | Upload and ingest PDF |
+| `/pdf/{source}/{filename}` | GET | Serve PDF file |
 
 **Example API call:**
 
