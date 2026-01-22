@@ -205,6 +205,6 @@ class BNMScraper(BaseScraper):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     scraper = BNMScraper()
-    docs = scraper.run(limit=5)  # Test with 5 docs
+    docs = scraper.run()  # Full scrape - no limit
     for doc in docs:
         print(f"[OK] {doc.title or doc.file_path.name}")

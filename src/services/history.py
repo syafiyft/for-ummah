@@ -95,6 +95,17 @@ class HistoryService:
                 break
         self._save_json(self.chat_history_file, history)
 
+    def rename_chat(self, session_id: str, new_title: str) -> bool:
+        """Rename a chat session."""
+        history = self._load_json(self.chat_history_file)
+        for chat in history:
+            if chat["id"] == session_id:
+                chat["title"] = new_title
+                chat["updated_at"] = datetime.now().isoformat()
+                self._save_json(self.chat_history_file, history)
+                return True
+        return False
+
     def delete_chat(self, session_id: str):
         """Delete a chat session."""
         history = self._load_json(self.chat_history_file)

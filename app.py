@@ -95,16 +95,15 @@ with st.sidebar:
     # --- CHAT HISTORY SECTION (Middle) ---
     if page == "Chat":
         st.divider()
-        col_new, col_refresh = st.columns([4, 1])
-        if col_new.button("＋ New Chat", use_container_width=True):
+        if st.button("＋ New Chat", use_container_width=True):
             st.session_state["session_id"] = None # Reset session
             st.rerun()
         
         st.caption("Recent Chats")
         
         # Fetch history
-        # We fetch first to determine height
         chats = []
+        history_resp = None
         try:
             history_resp = requests.get(f"{API_URL}/history/chats", timeout=5)
             if history_resp.status_code == 200:
@@ -112,29 +111,28 @@ with st.sidebar:
         except:
              st.caption("⚠️ Connection disconnected")
         
-        # Calculate dynamic height: 50px per chat item, max 600px. Min 100px.
-        # This ensures it shrinks when few chats, but scrolls when many.
-        # Note: st.container(height=...) expects int.
-        container_height = min(max(len(chats) * 50, 100), 600)
+        # Calculate dynamic height: 55px per chat item, max 500px. Min 150px.
+        container_height = min(max(len(chats) * 55, 150), 500)
         
         if chats:
             with st.container(height=container_height, border=False):
-                for chat in chats:
-                    # Robust ID handling
+                for idx, chat in enumerate(chats):
                     chat_id = chat.get("id")
                     if not chat_id: continue
-                    
+
                     chat_title = chat.get("title", "New Chat")[:30]
                     is_active = st.session_state.get("session_id") == chat_id
-                    
-                    # Unique key is critical
-                    if st.button(f"{'📍' if is_active else '💬'} {chat_title}", key=f"hist_{chat_id}", use_container_width=True):
-                        st.session_state["session_id"] = chat_id
-                        st.rerun()
-        elif not history_resp or history_resp.status_code != 200:
-             # Already handled above somewhat, but if empty list, do nothing or show info
-             pass
-        else:
+
+                    # Simple button - active chat uses primary (red) style
+                    if is_active:
+                        if st.button(chat_title, key=f"hist_{chat_id}", use_container_width=True, type="primary"):
+                            pass  # Already active
+                    else:
+                        if st.button(chat_title, key=f"hist_{chat_id}", use_container_width=True):
+                            st.session_state["session_id"] = chat_id
+                            st.rerun()
+                                    
+        elif history_resp and history_resp.status_code == 200:
              st.info("No recent chats")
 
     # Sidebar Bottom (Settings)

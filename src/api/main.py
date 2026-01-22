@@ -171,6 +171,20 @@ async def delete_chat_session(session_id: str):
     return {"status": "deleted", "id": session_id}
 
 
+class RenameChatRequest(BaseModel):
+    """Request for renaming a chat."""
+    title: str
+
+
+@app.patch("/history/chat/{session_id}/rename", tags=["History"])
+async def rename_chat_session(session_id: str, request: RenameChatRequest):
+    """Rename a chat session."""
+    success = get_history_service().rename_chat(session_id, request.title)
+    if not success:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    return {"status": "renamed", "id": session_id, "title": request.title}
+
+
 @app.get("/history/sources", tags=["History", "Ingestion"])
 async def list_ingestion_history():
     """List detailed ingestion history."""

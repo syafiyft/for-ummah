@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     
     # RAG settings
     rag_top_k: int = 5
+    rag_relevance_threshold: float = 0.65  # Min score to include source (0.60-0.70 range)
     chunk_size: int = 1000
     chunk_overlap: int = 200
     
