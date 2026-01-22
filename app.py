@@ -155,7 +155,7 @@ def show_chat_page():
                 st.rerun()
     
     # Submit button
-    if st.button("Ask Agent Deen", type="primary", use_container_width=True):
+    if st.button("Ask", type="primary", use_container_width=True):
         if not question or not question.strip():
             st.warning("Please enter a question.")
         else:
