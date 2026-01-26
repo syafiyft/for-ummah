@@ -13,6 +13,9 @@ openai>=1.12.0
 # Vector Database - direct SDK (no langchain wrapper)
 pinecone>=5.0.0
 
+# Reranking (NEW)
+sentence-transformers>=2.5.0
+
 # PDF Processing
 pymupdf>=1.23.0
 

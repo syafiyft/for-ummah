@@ -64,6 +64,7 @@ class RAGResponse:
     query_language: Language
     confidence: str  # "High", "Medium", "Low"
     model_used: str = "ollama"  # Track which model was used
+    reranked: bool = False  # Track if reranking was applied
     
     def to_dict(self) -> dict:
         return {
@@ -72,12 +73,13 @@ class RAGResponse:
             "query_language": self.query_language.value,
             "confidence": self.confidence,
             "model_used": self.model_used,
+            "reranked": self.reranked,
         }
 
 
 class RAGPipeline:
     """
-    RAG pipeline combining Pinecone retrieval with LLM.
+    RAG pipeline combining Pinecone retrieval, Reranking, and LLM.
     Supports Ollama (FREE) and Claude Haiku (paid, better).
     """
     
@@ -95,11 +97,24 @@ class RAGPipeline:
         """
         self.llm_type = llm_type
         
+        # Initialize Reranker (Lazy load or on init)
+        # Using cross-encoder/ms-marco-MiniLM-L-6-v2 (fast & accurate)
+        try:
+            from sentence_transformers import CrossEncoder
+            self.reranker = CrossEncoder(settings.rerank_model, default_activation_function=None)
+            logger.info(f"Reranker initialized: {settings.rerank_model}")
+        except Exception as e:
+            logger.warning(f"Reranker init failed: {e}. Reranking will be skipped.")
+            self.reranker = None
+        
         # Initialize LLM based on type
         if llm_type == LLM_CLAUDE and CLAUDE_AVAILABLE:
             try:
-                self.llm = ClaudeLLM(api_key=settings.anthropic_api_key)
-                logger.info(f"RAG Pipeline initialized with Claude Haiku")
+                self.llm = ClaudeLLM(
+                    model=settings.llm_model,
+                    api_key=settings.anthropic_api_key
+                )
+                logger.info(f"RAG Pipeline initialized with Claude: {settings.llm_model}")
             except Exception as e:
                 logger.warning(f"Claude init failed: {e}, falling back to Ollama")
                 self.llm = OllamaLLM(
@@ -124,28 +139,6 @@ class RAGPipeline:
             self._vector_store = PineconeStore()
         return self._vector_store
     
-    def query(
-        self,
-        question: str,
-        language_preference: Language | None = None,
-        top_k: int | None = None,
-    ) -> RAGResponse:
-        """
-        Query the RAG system.
-        
-        Args:
-            question: User's question (in any supported language)
-            language_preference: Preferred response language
-            top_k: Number of documents to retrieve
-            
-        Returns:
-            RAGResponse with answer and sources
-        """
-        # 0. Rewriting: If history provided, rewrite query for context
-        # (This logic is moved to ChatService or called explicitly, 
-        # but RAGPipeline provides the capability)
-        pass 
-
     def rewrite_query(self, question: str, history: list[dict]) -> str:
         """
         Rewrite user question based on chat history to make it standalone.
@@ -210,21 +203,56 @@ class RAGPipeline:
         # Translate query to English for better vector search
         search_query = translate_query_to_english(question, query_lang)
         
-        # Retrieve relevant documents using English query
-        docs = self.vector_store.search(search_query, top_k=top_k or settings.rag_top_k)
+        # 1. Retrieve Candidate Documents (High Recall)
+        # Use a larger top_k (e.g., 50) to cast a wide net
+        retrieval_k = top_k or settings.rag_top_k
+        docs = self.vector_store.search(search_query, top_k=retrieval_k)
         
-        # Filter low-relevance chunks to prevent hallucination
-        # Threshold is configurable via settings.rag_relevance_threshold (default: 0.65)
-        threshold = settings.rag_relevance_threshold
-        relevant_docs = [d for d in docs if d.get("score", 0) >= threshold]
-
-        # Log filtering info
-        if len(relevant_docs) < len(docs):
-            logger.info(f"Filtered {len(docs) - len(relevant_docs)} low-relevance chunks (below {threshold})")
+        # 2. Rerank Documents (High Precision)
+        reranked = False
+        relevant_docs = docs
+        
+        if self.reranker and docs:
+            try:
+                # Prepare pairs for cross-encoder: (query, doc_text)
+                pairs = [[search_query, d['text']] for d in docs]
+                
+                # Predict scores (higher is better)
+                scores = self.reranker.predict(pairs)
+                
+                # Attach new scores to docs
+                for doc, score in zip(docs, scores):
+                    doc['score'] = float(score)  # Update score with reranker score
+                    doc['metadata']['rerank_score'] = float(score)
+                
+                # Sort by new score (descending)
+                docs.sort(key=lambda x: x['score'], reverse=True)
+                
+                # Select top N for context (e.g., 10)
+                final_k = settings.rag_rerank_top_k
+                relevant_docs = docs[:final_k]
+                
+                # Filter by simple threshold if score is too low (e.g., < -5 logits or < 0.2 probability)
+                # CrossEncoder scores are logits (unbounded), so hard to threshold universally.
+                # We trust the relative ordering more.
+                reranked = True
+                logger.info(f"Reranked {len(docs)} docs -> Top {len(relevant_docs)} for context")
+                
+            except Exception as e:
+                logger.error(f"Reranking failed: {e}. Using original vector order.")
+        
+        # 3. Filter low-relevance chunks (if not using reranker, or as safety net)
+        # If we didn't rerank, we use cosine score threshold.
+        # If we did rerank, we rely on top-k, but we could add a logit threshold if needed.
+        if not reranked:
+            threshold = settings.rag_relevance_threshold
+            relevant_docs = [d for d in relevant_docs if d.get("score", 0) >= threshold]
+            if len(relevant_docs) < len(docs):
+                logger.info(f"Filtered low-relevance chunks (below {threshold})")
         
         # If no relevant docs, return early with "not enough info" message
         if not relevant_docs:
-            logger.warning("No chunks passed relevance threshold")
+            logger.warning("No chunks passed selection/threshold")
             
             no_info_msg = "I apologize, but I could not find sufficient information in the provided Shariah sources to answer your question."
             
@@ -237,6 +265,7 @@ class RAGPipeline:
                 query_language=query_lang,
                 confidence="Low",
                 model_used=self.llm_type,
+                reranked=reranked,
             )
         
         # Build context from retrieved docs with source citation
@@ -302,6 +331,7 @@ class RAGPipeline:
             query_language=query_lang,
             confidence=confidence,
             model_used=self.llm_type,
+            reranked=reranked,
         )
     
     def _extract_sources(self, documents: list[dict]) -> list[dict]:
@@ -333,6 +363,9 @@ class RAGPipeline:
             snippet_text = doc["metadata"].get("original_text") or doc["text"]
             snippet = snippet_text[:200] + "..." if len(snippet_text) > 200 else snippet_text
             
+            # Get score (could be reranker score or cosine)
+            score = doc.get("score", 0)
+            
             source = {
                 "source": doc["metadata"].get("source", "Unknown"),
                 "file": file_info,  # Display name (cleaned)
@@ -340,7 +373,7 @@ class RAGPipeline:
                 "page": page_num,
                 "total_pages": total_pages,
                 "snippet": snippet,
-                "score": doc.get("score", 0),
+                "score": score,  # Now reflects reranker score if active
             }
             sources.append(source)
         
