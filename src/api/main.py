@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from src.services import ChatService
 from src.services.ingestion import IngestionService
 from src.services.history import HistoryService
+from src.api import pdf_preview
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,14 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
     logger.info("Starting Agent Deen API...")
     get_history_service() # Initialize history files
+    
+    # Start Scheduler
+    from src.services.scheduler import start_scheduler, stop_scheduler
+    start_scheduler()
+    
     yield
+    
+    stop_scheduler()
     logger.info("Shutting down Agent Deen API...")
 
 
@@ -67,6 +75,8 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+app.include_router(pdf_preview.router)
 
 # CORS middleware
 app.add_middleware(
@@ -207,11 +217,19 @@ async def chat(request: ChatRequest):
         service = get_chat_service()
         history = get_history_service()
         
+        # Prepare context from history
+        chat_context = None
+        if request.session_id:
+            session = history.get_chat(request.session_id)
+            if session:
+                chat_context = session.get("messages", [])
+
         # 1. Get Answer
         response = service.ask(
             question=request.question,
             language=request.language,
             model=request.model,
+            chat_history=chat_context,
         )
         
         # 2. Log to History (if session_id provided)
@@ -373,6 +391,31 @@ async def list_pdfs():
                     })
     
     return {"pdfs": pdfs, "count": len(pdfs)}
+
+
+
+class TriggerRequest(BaseModel):
+    sources: list[str] = ["BNM", "SC"]
+
+@app.post("/admin/trigger-update", tags=["Admin"])
+async def trigger_update(request: TriggerRequest | None = None):
+    """
+    Manually trigger the background update job.
+    """
+    from src.services.scheduler import run_daily_update, scheduler
+    
+    sources = request.sources if request else ["BNM", "SC"]
+    
+    # Run in background via scheduler to avoid blocking
+    job = scheduler.add_job(run_daily_update, 'date', run_date=datetime.now(), args=[sources])
+    
+    return {"status": "started", "job_id": job.id, "message": f"Update job triggered for {sources}"}
+
+
+@app.get("/admin/job-status", tags=["Admin"])
+async def get_job_status():
+    """Get the status of the background update job."""
+    return get_history_service().get_job_status()
 
 
 # Run with: uvicorn src.api.main:app --reload

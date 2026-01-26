@@ -178,10 +178,11 @@ for-ummah/
 - 🤖 **Hybrid AI:** Choose between **Ollama (Free)** or **Claude Haiku (Smart)**
 - 🔄 **Query Translation:** Auto-translates Malay/Arabic queries to English for better search precision
 - 📄 **Smart PDF:** Page-level tracking with Arabic OCR support
-- 🔍 **Source Citations:** Every answer shows its source page numbers
+- 🔍 **Source Verification:** Clickable citations with **Exact Quote**, **Page Previews (Image)**, & **Highlighted Text**
 - 💬 **Chat History:** Persistent conversation sessions with sidebar navigation
 - 📤 **Source Management:** Upload PDFs or add by URL directly in UI
-- 🔗 **PDF Viewer:** Click source citations to open PDF at exact page
+- 🤖 **Automated Updates:** Scheduled background scraper (APScheduler) checks for new BNM documents
+- 📊 **Admin Dashboard:** Monitor document counts, storage, system health, and trigger manual updates
 
 ---
 

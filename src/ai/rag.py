@@ -11,7 +11,8 @@ from src.core import settings
 from src.core.language import Language, detect_language
 from src.core.exceptions import AIError
 from src.vector_db import PineconeStore
-from .prompts import SHARIAH_PROMPT
+from src.vector_db import PineconeStore
+from .prompts import SHARIAH_PROMPT, CONTEXTUAL_REWRITE_PROMPT
 from .ollama_llm import OllamaLLM
 from .translator import ensure_response_language
 
@@ -140,6 +141,65 @@ class RAGPipeline:
         Returns:
             RAGResponse with answer and sources
         """
+        # 0. Rewriting: If history provided, rewrite query for context
+        # (This logic is moved to ChatService or called explicitly, 
+        # but RAGPipeline provides the capability)
+        pass 
+
+    def rewrite_query(self, question: str, history: list[dict]) -> str:
+        """
+        Rewrite user question based on chat history to make it standalone.
+        """
+        if not history:
+            return question
+            
+        try:
+            # Format history for prompt
+            history_text = ""
+            # Use last 6 messages
+            recent = history[-6:]
+            for msg in recent:
+                role = "User" if msg.get("role") == "user" else "Assistant"
+                content = msg.get("content", "")
+                history_text += f"{role}: {content}\n"
+            
+            prompt = CONTEXTUAL_REWRITE_PROMPT.format(
+                history=history_text,
+                question=question
+            )
+            
+            # Fast generation with lower temp
+            rewritten = self.llm.generate(prompt, temperature=0.1, max_tokens=100)
+            rewritten = rewritten.strip()
+            
+            # Simple validation: if too short or empty, use original
+            if not rewritten or len(rewritten) < 3:
+                return question
+                
+            logger.info(f"Query Rewrite: '{question}' -> '{rewritten}'")
+            return rewritten
+            
+        except Exception as e:
+            logger.warning(f"Query rewrite failed: {e}")
+            return question
+
+    def query(
+        self,
+        question: str,
+        language_preference: Language | None = None,
+        top_k: int | None = None,
+    ) -> RAGResponse:
+        """
+        Query the RAG system.
+        
+        Args:
+            question: User's question (in any supported language)
+            language_preference: Preferred response language
+            top_k: Number of documents to retrieve
+            
+        Returns:
+            RAGResponse with answer and sources
+        """
         # Detect query language
         query_lang = detect_language(question)
         response_lang = language_preference or query_lang
@@ -208,6 +268,7 @@ class RAGPipeline:
         
         # Build prompt
         prompt = SHARIAH_PROMPT.format(
+            knowledge_sources="\n".join([f"- {s}" for s in settings.knowledge_sources]),
             context=context,
             question=question,  # Use original question for context
             query_language=query_lang.display_name,

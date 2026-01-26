@@ -23,6 +23,7 @@ class HistoryService:
             
         self.chat_history_file = self.data_dir / "chat_history.json"
         self.ingestion_history_file = self.data_dir / "ingestion_history.json"
+        self.job_status_file = self.data_dir / "job_status.json"
         self._init_files()
 
     def _init_files(self):
@@ -32,6 +33,9 @@ class HistoryService:
             
         if not self.ingestion_history_file.exists():
             self._save_json(self.ingestion_history_file, [])
+            
+        if not self.job_status_file.exists():
+            self._save_json(self.job_status_file, {"status": "idle", "message": "System ready", "progress": 0.0})
 
     def _load_json(self, file_path: Path) -> List[Dict]:
         try:
@@ -135,3 +139,20 @@ class HistoryService:
         history = self._load_json(self.ingestion_history_file)
         history.sort(key=lambda x: x["timestamp"], reverse=True)
         return history
+
+    # --- Job Status Methods (For Progress Bar) ---
+
+    def update_job_status(self, status: str, message: str = None, progress: float = 0.0, details: Dict = None):
+        """Update current job status (volatile, for UI polling)."""
+        data = {
+            "status": status, # "running", "idle", "completed", "failed"
+            "message": message,
+            "progress": progress, # 0.0 to 1.0
+            "updated_at": datetime.now().isoformat(),
+            "details": details or {}
+        }
+        self._save_json(self.job_status_file, data)
+
+    def get_job_status(self) -> Dict:
+        """Get current job status."""
+        return self._load_json(self.job_status_file) or {"status": "idle", "progress": 0.0}

@@ -33,3 +33,10 @@ tqdm>=4.66.0
 # Language Detection & Translation
 langdetect>=1.0.9
 deep-translator>=1.11.0
+
+# Scheduling
+apscheduler>=3.10.0
+
+# Data Visualization
+pandas>=2.0.0
+plotly>=5.18.0

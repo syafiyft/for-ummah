@@ -55,11 +55,21 @@ class IngestionService:
         # 2. Process
         return self._process_document(save_path, source_url=f"upload://{filename}")
 
-    def _process_document(self, file_path: Path, source_url: str) -> dict:
+    def _process_document(self, file_path: Path, source_url: str, source_name: str = None) -> dict:
         """
         Run extraction, chunking, and indexing pipeline.
         """
         start_time = time.time()
+        
+        # Determine source if not provided
+        if not source_name:
+            # Try to infer from directory name (e.g., data/bnm/file.pdf -> bnm)
+            # But be careful if it's in a temp dir.
+            parent_name = file_path.parent.name.lower()
+            if parent_name in ["bnm", "sc_malaysia", "aaoifi", "manual"]:
+                source_name = parent_name
+            else:
+                source_name = "Manual"
         
         # 1. Extract Text
         logger.info(f"Extracting text from: {file_path.name}")
@@ -79,7 +89,7 @@ class IngestionService:
             page_texts=extraction.page_texts if extraction.page_texts else [],
             total_pages=extraction.pages,
             metadata={
-                "source": "Manual",
+                "source": source_name,
                 "file": file_path.name,
                 "url": source_url,
                 "title": file_path.stem.replace("_", " ").title(),
@@ -92,7 +102,7 @@ class IngestionService:
              chunks = chunk_text(
                  extraction.text,
                  metadata={
-                    "source": "Manual",
+                    "source": source_name,
                     "file": file_path.name,
                     "url": source_url,
                     "title": file_path.stem.replace("_", " ").title(),

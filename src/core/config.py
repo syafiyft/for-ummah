@@ -38,10 +38,18 @@ class Settings(BaseSettings):
     use_ollama: bool = True  # Set to False to use Anthropic instead
     
     # RAG settings
-    rag_top_k: int = 5
-    rag_relevance_threshold: float = 0.65  # Min score to include source (0.60-0.70 range)
+    rag_top_k: int = 12
+    rag_relevance_threshold: float = 0.55  # Lowered to 0.55 to allow noisy queries
     chunk_size: int = 1000
     chunk_overlap: int = 200
+    
+    # Dynamic Prompt Settings
+    knowledge_sources: list[str] = [
+        "Bank Negara Malaysia (BNM) Shariah Policy Documents",
+        "AAOIFI Shariah Standards",
+        "Securities Commission Malaysia (SC) Resolutions",
+        "JAKIM Fatwas",
+    ]
     
     class Config:
         env_file = ".env"

@@ -80,6 +80,7 @@ class ChatService:
         question: str,
         language: str | None = None,
         model: str = "ollama",
+        chat_history: list[dict] | None = None,
     ) -> ChatResponse:
         """
         Process a user question.
@@ -88,6 +89,7 @@ class ChatService:
             question: User's question in any supported language
             language: Preferred response language code ("ar", "en", "ms")
             model: LLM to use ("ollama" or "claude")
+            chat_history: Optional history for contextual rewriting
             
         Returns:
             ChatResponse with answer and metadata
@@ -103,9 +105,14 @@ class ChatService:
         # Get RAG pipeline for selected model
         rag = self._get_rag(model)
         
+        # Contextual Rewriting
+        search_question = question
+        if chat_history:
+            search_question = rag.rewrite_query(question, chat_history)
+        
         # Query RAG
         rag_response = rag.query(
-            question=question,
+            question=search_question,
             language_preference=lang_pref,
         )
         
