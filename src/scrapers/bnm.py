@@ -32,6 +32,13 @@ class BNMScraper(BaseScraper):
     # Pages to scrape for PDF documents
     PAGES = [
         "/banking-islamic-banking",  # Main Islamic banking policy documents
+        "/insurance-takaful",  # Takaful insurance
+        "/development-financial-institutions",  # Development financial institutions
+        "/money-services-business",  # Money services business
+        "/intermediaries",  # Financial intermediaries
+        "/payment-systems",  # Payment systems
+        "/dnfbp",  # Designated Non-Financial Businesses and Professions
+        "/regulations/currency",  # Currency regulations
         "/shariah",
         "/islamic-finance/shariah",
         "/regulation/policy-documents/islamic-banking",

@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     # Pinecone
     pinecone_index: str = "shariah-kb"
     pinecone_region: str = "us-east-1"
+
+    # Supabase
+    supabase_url: str = ""
+    supabase_key: str = ""
+    pdf_storage_bucket: str = "shariah-documents"
     
     # Paths
     data_dir: Path = Path("data")

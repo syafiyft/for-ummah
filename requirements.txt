@@ -33,6 +33,9 @@ streamlit-option-menu>=0.3.2
 # Utilities
 tqdm>=4.66.0
 
+# Database (Supabase)
+supabase>=2.0.0
+
 # Language Detection & Translation
 langdetect>=1.0.9
 deep-translator>=1.11.0

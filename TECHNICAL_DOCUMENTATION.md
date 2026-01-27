@@ -44,6 +44,13 @@
 │  (Local LLM) │    │ (Vector DB)  │    │  (Cloud LLM) │
 │    FREE      │    │   FREE tier  │    │  ~$0.001/q   │
 └──────────────┘    └──────────────┘    └──────────────┘
+                              ↓
+                    ┌──────────────────┐
+                    │    SUPABASE      │
+                    │  PostgreSQL +    │
+                    │    Storage       │
+                    │   FREE tier      │
+                    └──────────────────┘
 ```
 
 ---
@@ -81,6 +88,10 @@ STAGE 4: LLM GENERATION
 ```
 PDF/URL Input
     ↓
+UPLOAD (Supabase Storage: shariah-documents/{source}/{filename})
+    ↓
+CREATE RECORD (Supabase PostgreSQL: documents table)
+    ↓
 EXTRACT (PyMuPDF → Tesseract OCR fallback)
     ↓
 CHUNK (1000 chars, 200 overlap, sentence boundaries)
@@ -88,13 +99,23 @@ CHUNK (1000 chars, 200 overlap, sentence boundaries)
 EMBED (Ollama nomic-embed-text, 768D)
     ↓
 INDEX (Pinecone with metadata: source, page, language)
+    ↓
+UPDATE STATUS (Supabase: status = 'indexed')
 ```
 
-**Metadata stored per chunk:**
-- `source`: BNM, SC, AAOIFI, JAKIM, Manual
+**Metadata stored per chunk (Pinecone):**
+- `source`: BNM, SC_Malaysia, Manual
 - `page_number` / `total_pages`
 - `language`: en, ar, ms
 - `original_text`: preserves source language
+- `document_id`: UUID from Supabase
+
+**Document metadata (Supabase PostgreSQL):**
+- `id`, `filename`, `source`, `source_url`
+- `title`, `storage_path`, `file_size_bytes`
+- `total_pages`, `extraction_method`
+- `status`: pending, processing, indexed, failed
+- `created_at`, `indexed_at`
 
 ---
 
@@ -105,10 +126,13 @@ INDEX (Pinecone with metadata: source, page, language)
 | `/chat` | POST | Main Q&A endpoint |
 | `/ingest/url` | POST | Index document from URL |
 | `/ingest/upload` | POST | Index uploaded PDF |
-| `/history/chats` | GET | List conversations |
-| `/history/chat/{id}` | GET/DELETE | Manage session |
+| `/history/chats` | GET | List conversations (Supabase) |
+| `/history/chat/{id}` | GET/DELETE | Manage session (Supabase) |
+| `/history/sources` | GET | List indexed sources |
 | `/admin/trigger-update` | POST | Manual scraper run |
-| `/pdf/{source}/{file}` | GET | Serve PDF (secure) |
+| `/admin/job-status` | GET | Background job status |
+| `/pdf/{source}/{file}` | GET | Serve PDF from Supabase Storage |
+| `/pdf/list` | GET | List all PDFs |
 
 ---
 
@@ -123,6 +147,8 @@ INDEX (Pinecone with metadata: source, page, language)
 | **Embeddings** | Ollama nomic-embed-text | FREE |
 | **Reranking** | CrossEncoder (sentence-transformers) | FREE |
 | **Vector DB** | Pinecone Serverless | FREE tier |
+| **Database** | Supabase PostgreSQL | FREE tier (500MB) |
+| **Storage** | Supabase Storage | FREE tier (1GB) |
 | **PDF Extraction** | PyMuPDF + Tesseract | FREE |
 | **Web Scraping** | Playwright + BeautifulSoup | FREE |
 | **Translation** | Google Translate (deep-translator) | FREE |
@@ -314,12 +340,22 @@ for-ummah/
 │   │   ├── config.py           # Pydantic settings
 │   │   └── language.py         # Language detection
 │   │
+│   ├── db/                     # Supabase integration
+│   │   ├── client.py           # Supabase client singleton
+│   │   ├── models.py           # Pydantic data models
+│   │   ├── storage.py          # Storage service (PDFs)
+│   │   └── repositories/       # Database repositories
+│   │       ├── documents.py    # Document CRUD
+│   │       ├── chat.py         # Chat sessions/messages
+│   │       ├── ingestion.py    # Ingestion history
+│   │       └── job_status.py   # Background job status
+│   │
 │   ├── api/                    # FastAPI endpoints
 │   │   └── main.py             # All REST endpoints
 │   │
 │   ├── services/               # Business logic
 │   │   ├── chat.py             # ChatService orchestrator
-│   │   ├── history.py          # Conversation persistence
+│   │   ├── history.py          # Conversation persistence (Supabase)
 │   │   ├── ingestion.py        # Document processing
 │   │   └── scheduler.py        # Background jobs
 │   │
@@ -340,20 +376,23 @@ for-ummah/
 │   └── scrapers/               # Web scrapers
 │       ├── base.py             # Abstract base class
 │       ├── bnm.py              # Bank Negara Malaysia
-│       ├── sc.py               # Securities Commission
+│       ├── sc.py               # Securities Commission Malaysia
 │       └── manual.py           # Direct URL handler
 │
 ├── scripts/                    # Utility scripts
 │   ├── reindex_with_pages.py   # Re-process all PDFs
 │   └── scrape_url.py           # Index single URL
 │
-└── data/                       # Document storage
-    ├── bnm/                    # BNM PDFs
-    ├── sc_malaysia/            # SC PDFs
-    ├── manual/                 # User uploads
-    ├── chat_history.json       # Conversations
-    ├── ingestion_history.json  # Ingestion logs
-    └── job_status.json         # Background job state
+├── docs/
+│   ├── architecture.md         # System architecture
+│   └── ...                     # Other documentation
+│
+└── data/                       # Local cache (optional)
+    ├── bnm/                    # BNM PDFs (cache)
+    ├── sc_malaysia/            # SC PDFs (cache)
+    └── manual/                 # User uploads (cache)
+
+Note: Primary storage is in Supabase (PostgreSQL + Storage)
 ```
 
 ---
@@ -366,6 +405,10 @@ for-ummah/
 # Required: Pinecone
 PINECONE_API_KEY=pcsk_...
 PINECONE_INDEX=shariah-kb
+
+# Required: Supabase
+SUPABASE_URL=https://xxxxx.supabase.co
+SUPABASE_KEY=eyJhbGciOiJIUzI1NiIs...
 
 # Optional: Claude (for premium LLM)
 ANTHROPIC_API_KEY=sk-ant-api03-...
@@ -392,6 +435,7 @@ LLM_MAX_TOKENS=2000
 |---------|---------|----------|------|
 | **Ollama** | Local LLM + Embeddings | Yes | FREE |
 | **Pinecone** | Vector database | Yes | FREE tier |
+| **Supabase** | PostgreSQL + Storage | Yes | FREE tier (500MB DB + 1GB Storage) |
 | **Anthropic** | Claude LLM | Optional | ~$0.001/query |
 | **Google Translate** | Query/response translation | Auto | FREE tier |
 
@@ -425,11 +469,13 @@ streamlit run app.py
 
 Agent Deen delivers enterprise-grade Islamic finance Q&A with:
 
-- **100% FREE local deployment** (Ollama + Pinecone free tier)
+- **100% FREE deployment** (Ollama + Pinecone + Supabase free tiers)
 - **Premium option** (Claude Haiku at $0.001/query)
 - **High precision** (CrossEncoder reranking)
 - **Multi-language** (Arabic, English, Malay)
-- **Auto-updating** knowledge base
+- **Auto-updating** knowledge base (BNM, SC Malaysia)
 - **Source verification** with page-level citations
+- **Cloud storage** (Supabase PostgreSQL + Storage)
+- **Persistent history** (Chat sessions in database)
 
 Built for the Ummah.

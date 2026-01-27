@@ -19,8 +19,31 @@ from src.services import ChatService
 from src.services.ingestion import IngestionService
 from src.services.history import HistoryService
 from src.api import pdf_preview
+from src.db.client import is_supabase_configured
 
 logger = logging.getLogger(__name__)
+
+# Lazy-loaded Supabase services
+_storage_service = None
+_document_repo = None
+
+
+def get_storage_service():
+    """Get storage service if Supabase is configured."""
+    global _storage_service
+    if _storage_service is None and is_supabase_configured():
+        from src.db.storage import StorageService
+        _storage_service = StorageService()
+    return _storage_service
+
+
+def get_document_repo():
+    """Get document repository if Supabase is configured."""
+    global _document_repo
+    if _document_repo is None and is_supabase_configured():
+        from src.db.repositories.documents import DocumentRepository
+        _document_repo = DocumentRepository()
+    return _document_repo
 
 # Service instances (lazy loaded)
 _chat_service: ChatService | None = None
@@ -270,14 +293,27 @@ async def ingest_url(request: IngestUrlRequest):
     try:
         service = get_ingestion_service()
         result = service.ingest_from_url(request.url)
-        
-        # Log success
-        get_history_service().log_ingestion("url", request.url, result.get("file", ""), "success")
-        
+
+        # Log success with extended details
+        get_history_service().log_ingestion(
+            type="url",
+            source=request.url,
+            filename=result.get("file", ""),
+            status="success",
+            chunks_created=result.get("chunks", 0),
+            duration_seconds=result.get("duration_seconds")
+        )
+
         return IngestResponse(**result)
     except Exception as e:
         logger.error(f"Ingestion error: {e}")
-        get_history_service().log_ingestion("url", request.url, "", "failed", str(e))
+        get_history_service().log_ingestion(
+            type="url",
+            source=request.url,
+            filename="",
+            status="failed",
+            error=str(e)
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -294,50 +330,88 @@ async def ingest_upload(file: UploadFile = File(...)):
         content = await file.read()
         service = get_ingestion_service()
         result = service.ingest_file(content, file.filename)
-        
-        # Log success
-        get_history_service().log_ingestion("upload", file.filename, result.get("file", ""), "success")
-        
+
+        # Log success with extended details
+        get_history_service().log_ingestion(
+            type="upload",
+            source=file.filename,
+            filename=result.get("file", ""),
+            status="success",
+            chunks_created=result.get("chunks", 0),
+            duration_seconds=result.get("duration_seconds")
+        )
+
         return IngestResponse(**result)
     except Exception as e:
         logger.error(f"Upload error: {e}")
-        get_history_service().log_ingestion("upload", file.filename, "", "failed", str(e))
+        get_history_service().log_ingestion(
+            type="upload",
+            source=file.filename,
+            filename="",
+            status="failed",
+            error=str(e)
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/pdf/{source}/{filename:path}", tags=["PDF"])
-async def get_pdf(source: str, filename: str):
+async def get_pdf(source: str, filename: str, redirect: bool = True):
     """
-    Serve a PDF file from the data directory.
-    
+    Serve a PDF file from Supabase Storage or local data directory.
+
     Args:
         source: Source folder (e.g., "manual", "bnm")
         filename: PDF filename (can include spaces, will be URL-decoded)
-    
+        redirect: If True and Supabase is configured, redirect to signed URL
+
     Returns:
-        PDF file with appropriate headers
+        PDF file or redirect to signed URL
     """
-    from fastapi.responses import FileResponse
+    from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
     from pathlib import Path
     from urllib.parse import unquote
     from src.core import settings
-    
+    import io
+
     # URL decode the filename (handles %20 for spaces, etc.)
     filename = unquote(filename)
-    
+
     # Security: Block path traversal attempts
     if ".." in filename or ".." in source or "/" in source:
         raise HTTPException(status_code=400, detail="Invalid file path")
-    
+
     # Ensure .pdf extension
     if not filename.lower().endswith('.pdf'):
         filename = filename + '.pdf'
-    
-    # Construct file path
+
+    storage = get_storage_service()
+
+    # Try Supabase Storage first
+    if storage:
+        try:
+            storage_path = f"{source.lower()}/{filename}"
+
+            # Option 1: Redirect to signed URL (faster, less bandwidth)
+            if redirect:
+                signed_url = storage.get_signed_url(storage_path, expires_in=3600)
+                if signed_url:
+                    return RedirectResponse(url=signed_url)
+
+            # Option 2: Stream the file through the API
+            content = storage.download_pdf(storage_path, use_cache=True)
+            return StreamingResponse(
+                io.BytesIO(content),
+                media_type="application/pdf",
+                headers={"Content-Disposition": f"inline; filename=\"{filename}\""}
+            )
+        except Exception as e:
+            logger.debug(f"Storage fetch failed, falling back to local: {e}")
+
+    # Fall back to local file
     source_dir = settings.data_dir / source.lower()
     file_path = source_dir / filename
-    
-    # Security: Ensure file is within data directory (prevent path traversal)
+
+    # Security: Ensure file is within data directory
     try:
         file_path = file_path.resolve()
         data_dir = settings.data_dir.resolve()
@@ -345,10 +419,9 @@ async def get_pdf(source: str, filename: str):
             raise HTTPException(status_code=403, detail="Access denied")
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid path")
-    
+
     # Check if file exists - if not, try case-insensitive search
     if not file_path.exists():
-        # Try to find a matching file (case-insensitive, fuzzy match)
         if source_dir.exists():
             filename_lower = filename.lower().replace(' ', '_').replace('-', '_')
             for pdf_file in source_dir.glob("*.pdf"):
@@ -356,10 +429,10 @@ async def get_pdf(source: str, filename: str):
                 if filename_lower in pdf_name_normalized or pdf_name_normalized in filename_lower:
                     file_path = pdf_file
                     break
-    
+
     if not file_path.exists():
         raise HTTPException(status_code=404, detail=f"PDF not found: {filename}")
-    
+
     return FileResponse(
         path=file_path,
         media_type="application/pdf",
@@ -369,19 +442,54 @@ async def get_pdf(source: str, filename: str):
 
 
 @app.get("/pdf/list", tags=["PDF"])
-async def list_pdfs():
+async def list_pdfs(source: str | None = None):
     """
-    List all available PDFs in the data directory.
+    List all available PDFs.
+    Queries from database if Supabase is configured, otherwise scans local directory.
+
+    Args:
+        source: Optional filter by source (e.g., 'bnm', 'manual')
     """
     from pathlib import Path
     from src.core import settings
-    
+
+    doc_repo = get_document_repo()
+
+    # Use database if Supabase is configured
+    if doc_repo:
+        try:
+            documents = doc_repo.get_all(source=source)
+            pdfs = [
+                {
+                    "id": str(doc.id),
+                    "source": doc.source,
+                    "filename": doc.filename,
+                    "title": doc.title,
+                    "size_bytes": doc.file_size_bytes,
+                    "total_pages": doc.total_pages,
+                    "status": doc.status,
+                    "storage_path": doc.storage_path,
+                    "url": f"/pdf/{doc.source}/{doc.filename}",
+                    "created_at": doc.created_at.isoformat() if doc.created_at else None,
+                    "indexed_at": doc.indexed_at.isoformat() if doc.indexed_at else None,
+                }
+                for doc in documents
+            ]
+            return {"pdfs": pdfs, "count": len(pdfs), "storage": "supabase"}
+        except Exception as e:
+            logger.warning(f"Database query failed, falling back to local: {e}")
+
+    # Fall back to local directory scan
     pdfs = []
     data_dir = settings.data_dir
-    
+
     if data_dir.exists():
         for source_dir in data_dir.iterdir():
-            if source_dir.is_dir() and source_dir.name != "processed":
+            if source_dir.is_dir() and source_dir.name not in ["processed", ".cache"]:
+                # Apply source filter if provided
+                if source and source_dir.name.lower() != source.lower():
+                    continue
+
                 for pdf_file in source_dir.glob("*.pdf"):
                     pdfs.append({
                         "source": source_dir.name,
@@ -389,9 +497,57 @@ async def list_pdfs():
                         "size_bytes": pdf_file.stat().st_size,
                         "url": f"/pdf/{source_dir.name}/{pdf_file.name}"
                     })
-    
-    return {"pdfs": pdfs, "count": len(pdfs)}
 
+    return {"pdfs": pdfs, "count": len(pdfs), "storage": "local"}
+
+
+
+@app.get("/pdf/signed-url/{source}/{filename:path}", tags=["PDF"])
+async def get_pdf_signed_url(source: str, filename: str, expires_in: int = 3600):
+    """
+    Get a signed URL for direct PDF access from Supabase Storage.
+
+    Args:
+        source: Source folder (e.g., "manual", "bnm")
+        filename: PDF filename
+        expires_in: URL expiration time in seconds (default: 1 hour)
+
+    Returns:
+        Signed URL for the PDF
+    """
+    from urllib.parse import unquote
+
+    filename = unquote(filename)
+
+    # Security check
+    if ".." in filename or ".." in source or "/" in source:
+        raise HTTPException(status_code=400, detail="Invalid file path")
+
+    if not filename.lower().endswith('.pdf'):
+        filename = filename + '.pdf'
+
+    storage = get_storage_service()
+    if not storage:
+        raise HTTPException(
+            status_code=501,
+            detail="Supabase Storage not configured. Use /pdf/{source}/{filename} instead."
+        )
+
+    try:
+        storage_path = f"{source.lower()}/{filename}"
+        signed_url = storage.get_signed_url(storage_path, expires_in=expires_in)
+
+        if not signed_url:
+            raise HTTPException(status_code=404, detail="PDF not found in storage")
+
+        return {
+            "signed_url": signed_url,
+            "expires_in": expires_in,
+            "storage_path": storage_path
+        }
+    except Exception as e:
+        logger.error(f"Failed to generate signed URL: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 class TriggerRequest(BaseModel):

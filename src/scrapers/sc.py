@@ -18,9 +18,7 @@ class SCScraper(BaseScraper):
     
     BASE_URL = "https://www.sc.com.my"
     START_URLS = [
-        "/regulation/acts",
-        "/regulation/guidelines",
-        "/development/islamic-capital-market/syariah/resolutions-of-the-shariah-advisory-council-of-the-sc"
+        "/regulation/acts",  # Shariah Standards and Acts
     ]
 
     def __init__(self):

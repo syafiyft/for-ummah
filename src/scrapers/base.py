@@ -18,8 +18,21 @@ from bs4 import BeautifulSoup
 
 from src.core import settings
 from src.core.exceptions import ScraperError
+from src.db.client import is_supabase_configured
 
 logger = logging.getLogger(__name__)
+
+# Lazy-loaded document repository for deduplication
+_document_repo = None
+
+
+def _get_document_repo():
+    """Get document repository for checking existing documents."""
+    global _document_repo
+    if _document_repo is None and is_supabase_configured():
+        from src.db.repositories.documents import DocumentRepository
+        _document_repo = DocumentRepository()
+    return _document_repo
 
 # Playwright imports (optional - only needed for WAF bypass)
 try:
@@ -168,6 +181,29 @@ class BaseScraper(ABC):
         """Generate a unique hash for a document URL."""
         return hashlib.md5(url.encode()).hexdigest()[:12]
 
+    def _is_already_indexed(self, filename: str) -> bool:
+        """
+        Check if a document is already indexed in Supabase DB.
+
+        Args:
+            filename: PDF filename to check
+
+        Returns:
+            True if document exists in DB with 'indexed' status
+        """
+        doc_repo = _get_document_repo()
+        if not doc_repo:
+            return False
+
+        try:
+            existing = doc_repo.get_by_source_and_filename(self.source.lower(), filename)
+            if existing and existing.status == "indexed":
+                return True
+        except Exception as e:
+            logger.debug(f"Error checking indexed status: {e}")
+
+        return False
+
     def _sanitize_filename(self, filename: str) -> str:
         """Clean filename for filesystem compatibility."""
         # Remove invalid characters
@@ -180,25 +216,30 @@ class BaseScraper(ABC):
     def _download_pdf(self, url: str, filename: str | None = None) -> Path:
         """
         Download a PDF file.
-        
+
         Args:
             url: URL of the PDF
             filename: Optional custom filename
-            
+
         Returns:
             Path to saved file
         """
         if not filename:
             filename = url.split("/")[-1].split("?")[0]
-        
+
         # Ensure .pdf extension
         if not filename.lower().endswith(".pdf"):
             filename += ".pdf"
-        
+
         # Clean filename
         filename = "".join(c if c.isalnum() or c in "._-" else "_" for c in filename)
         file_path = self.data_dir / filename
-        
+
+        # Skip if already indexed in Supabase DB
+        if self._is_already_indexed(filename):
+            logger.info(f"Skipping already indexed: {filename}")
+            return file_path if file_path.exists() else None
+
         # Skip if already downloaded
         if file_path.exists():
             logger.debug(f"Skipping existing file: {filename}")
@@ -227,6 +268,11 @@ class BaseScraper(ABC):
         doc_hash = self._get_document_hash(url)
         filename = f"{doc_hash}_{self._sanitize_filename(title)}.pdf" if title else f"{doc_hash}.pdf"
         file_path = self.data_dir / filename
+
+        # Skip if already indexed in Supabase DB
+        if self._is_already_indexed(filename):
+            logger.info(f"Skipping already indexed: {filename}")
+            return file_path if file_path.exists() else None
 
         # Skip if already downloaded and not empty
         if file_path.exists() and file_path.stat().st_size > 0:
