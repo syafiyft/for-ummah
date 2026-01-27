@@ -52,3 +52,5 @@ scripts/test_ingestion.py
 # Documentation
 *.md
 !README.md
+!TECHNICAL_DOCUMENTATION.md
+!PRODUCTION_COST_ANALYSIS.md

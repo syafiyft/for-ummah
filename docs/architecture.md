@@ -13,7 +13,9 @@ flowchart TB
     subgraph Backend["⚙️ Backend (FastAPI)"]
         API[API Endpoints]
         ChatSvc[ChatService]
+        ChatSvc[ChatService]
         IngestSvc[IngestionService]
+        HistSvc[HistoryService]
         RAG[RAG Pipeline]
     end
 
@@ -25,13 +27,15 @@ flowchart TB
 
     subgraph Storage["💾 Storage"]
         Pinecone[(Pinecone Vector DB)]
-        PDFs[("data/ PDFs")]
+        Supabase[(Supabase PostgreSQL)]
+        SupaStorage[(Supabase Storage)]
+        PDFs[("data/ local cache")]
     end
 
-    subgraph Scrapers["🔧 Scrapers"]
+    subgraph Scrapers["🔧 Scrapers (Threaded)"]
         BNM[BNM Scraper]
         Manual[Manual Scraper]
-        Playwright[Playwright WAF Bypass]
+        Playwright[Playwright (nest_asyncio)]
     end
 
     UI --> API
@@ -46,10 +50,12 @@ flowchart TB
     
     IngestSvc --> Manual
     Manual --> Playwright
-    Manual --> PDFs
+    Manual --> SupaStorage
     IngestSvc --> Pinecone
-    
-    API --> PDFs
+    IngestSvc --> Supabase
+
+    ChatSvc --> Supabase
+    API --> SupaStorage
 ```
 
 ## Data Flow: Ask a Question
@@ -118,35 +124,63 @@ sequenceDiagram
 
 ## Storage Structure
 
+### Supabase Storage (Primary)
+
+```
+shariah-documents/ (Storage Bucket)
+├── bnm/                        # BNM scraped PDFs
+│   └── *.pdf
+├── sc_malaysia/                # SC Malaysia PDFs
+│   └── *.pdf
+└── manual/                     # User uploads & URL downloads
+    └── *.pdf
+```
+
+### Supabase PostgreSQL
+
+```sql
+documents              # Document metadata
+chat_sessions          # User conversations
+chat_messages          # Message history
+ingestion_history      # Ingestion logs
+job_status             # Background job state
+```
+
+### Local File Structure
+
 ```
 for-ummah/
-├── data/
-│   ├── bnm/                    # BNM scraped PDFs
-│   │   └── *.pdf
-│   ├── manual/                 # User uploads & URL downloads
-│   │   └── *.pdf
-│   └── processed/
-│       └── all_chunks_with_pages.json  # Local backup
+├── data/                       # Local cache (optional)
+│   ├── bnm/
+│   ├── sc_malaysia/
+│   └── manual/
 │
 ├── src/
 │   ├── api/main.py             # FastAPI endpoints
+│   ├── db/                     # Supabase integration
+│   │   ├── client.py           # Supabase client
+│   │   ├── models.py           # Pydantic models
+│   │   ├── storage.py          # Storage service
+│   │   └── repositories/       # Database repositories
 │   ├── services/
-│   │   ├── __init__.py         # ChatService
+│   │   ├── chat.py             # ChatService
+│   │   ├── history.py          # History (Supabase-backed)
 │   │   └── ingestion.py        # IngestionService
 │   ├── ai/
-│   │   ├── rag.py              # RAG Pipeline
+│   │   ├── rag.py              # RAG Pipeline + Reranking
 │   │   ├── ollama_llm.py       # Ollama client
 │   │   ├── claude_llm.py       # Claude client
 │   │   └── translator.py       # Language enforcement
 │   ├── scrapers/
 │   │   ├── base.py             # BaseScraper + Playwright
 │   │   ├── bnm.py              # BNM website scraper
+│   │   ├── sc.py               # SC Malaysia scraper
 │   │   └── manual.py           # User upload scraper
 │   ├── processors/
-│   │   ├── pdf.py              # Text extraction
+│   │   ├── pdf_extractor.py    # Text extraction
 │   │   └── chunker.py          # Sentence-based chunking
 │   └── vector_db/
-│       └── pinecone.py         # Pinecone client
+│       └── pinecone_store.py   # Pinecone client
 │
 └── app.py                      # Streamlit frontend
 ```
@@ -158,15 +192,22 @@ for-ummah/
 | `/chat` | POST | Ask a question, get RAG answer |
 | `/ingest/url` | POST | Ingest document from URL |
 | `/ingest/upload` | POST | Upload and ingest PDF |
-| `/pdf/{source}/{filename}` | GET | Serve PDF for viewer |
+| `/pdf/{source}/{filename}` | GET | Serve PDF from Supabase Storage |
 | `/pdf/list` | GET | List all available PDFs |
+| `/history/chats` | GET | List chat sessions (Supabase) |
+| `/history/chat/{id}` | GET/DELETE | Get/delete chat session |
+| `/history/sources` | GET | List indexed document sources |
+| `/admin/trigger-update` | POST | Trigger background scraper |
+| `/admin/job-status` | GET | Get job status |
 | `/health` | GET | Health check |
 
 ## Key Components
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| **RAG Pipeline** | `src/ai/rag.py` | Orchestrates search + LLM |
+| **RAG Pipeline** | `src/ai/rag.py` | Orchestrates search + LLM + Reranking |
 | **Ingestion** | `src/services/ingestion.py` | PDF processing pipeline |
-| **PDF Viewer** | `src/api/main.py` | Serves PDFs with page navigation |
+| **PDF Viewer** | `src/api/main.py` | Serves PDFs from Supabase Storage |
+| **Supabase Client** | `src/db/client.py` | Database + Storage connection |
+| **Repositories** | `src/db/repositories/` | Data access layer |
 | **Playwright** | `src/scrapers/base.py` | WAF bypass for downloads |

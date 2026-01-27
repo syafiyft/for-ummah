@@ -68,8 +68,8 @@ with st.sidebar:
     # Modern Sidebar Menu (ChatGPT Style: Subtle Gray Selection)
     page = option_menu(
         menu_title=None, 
-        options=["Chat", "Manage Sources"], 
-        icons=["chat-left-text", "database-fill"], # Updated icons to match standard app feels
+        options=["Chat", "Admin Dashboard"], 
+        icons=["chat-left-text", "speedometer"], # Updated icons to match standard app feels
         menu_icon="cast", 
         default_index=0,
         styles={
@@ -124,13 +124,31 @@ with st.sidebar:
                     is_active = st.session_state.get("session_id") == chat_id
 
                     # Simple button - active chat uses primary (red) style
-                    if is_active:
-                        if st.button(chat_title, key=f"hist_{chat_id}", use_container_width=True, type="primary"):
-                            pass  # Already active
-                    else:
-                        if st.button(chat_title, key=f"hist_{chat_id}", use_container_width=True):
-                            st.session_state["session_id"] = chat_id
-                            st.rerun()
+                    col1, col2 = st.columns([0.85, 0.15])
+                    with col1:
+                        if is_active:
+                            if st.button(chat_title, key=f"hist_{chat_id}", use_container_width=True, type="primary"):
+                                pass  # Already active
+                        else:
+                            if st.button(chat_title, key=f"hist_{chat_id}", use_container_width=True):
+                                st.session_state["session_id"] = chat_id
+                                st.rerun()
+                    
+                    with col2:
+                        # Delete button with confirmation fallback (Streamlit immediate delete for now as per plan)
+                        if st.button("🗑️", key=f"del_{chat_id}", help="Delete Chat"):
+                            try:
+                                del_resp = requests.delete(f"{API_URL}/history/chat/{chat_id}", timeout=5)
+                                if del_resp.status_code == 200:
+                                    st.toast("Chat deleted successfully")
+                                    # If deleted active session, clear selection
+                                    if is_active:
+                                        st.session_state["session_id"] = None
+                                    st.rerun()
+                                else:
+                                    st.error("Failed to delete")
+                            except Exception as e:
+                                st.error(f"Error: {e}")
                                     
         elif history_resp and history_resp.status_code == 200:
              st.info("No recent chats")
@@ -239,17 +257,38 @@ def show_chat_page():
                             snippet = source.get('snippet', '')[:300]
                             page_display = f"Page {page_num}" + (f"/{total_pages}" if total_pages else "")
                             
-                            with st.expander(f"📖 {source_name} | {file_display} | 📄 {page_display}"):
-                                st.markdown(f"**Snippet:** {snippet}...")
+                            # Clean Header (Removed '📄')
+                            with st.expander(f"📖 {idx+1}. {source_name} | {file_display} | {page_display}"):
+                                # 1. Show Exact Quote
+                                st.markdown(f"**Exact Quote:**\n> {snippet}...")
+                                
                                 if file_name:
                                     from urllib.parse import quote
                                     if not file_name.lower().endswith('.pdf'): file_name += '.pdf'
                                     encoded_filename = quote(file_name, safe='')
-                                    pdf_url = f"{API_URL}/pdf/{source_name.lower()}/{encoded_filename}#page={page_num}"
-                                    st.markdown(f"**📄 View PDF at page {page_num}**")
-                                    st.link_button("Open PDF in Browser ↗", pdf_url)
+                                    
+                                    # Prepare search terms
+                                    # For browser highlighting (fragile)
+                                    words = snippet.split()
+                                    short_search = " ".join(words[:5]) if len(words) > 5 else snippet
+                                    search_term = quote(short_search)
+                                    
+                                    # For backend image cropping (needs more context)
+                                    # Use a slightly longer snippet for finding unique match
+                                    snippet_crop_text = " ".join(words[:15]) if len(words) > 15 else snippet
+                                    encoded_crop = quote(snippet_crop_text)
+
+                                    # 2. Key Update: Snippet Image Preview
+                                    # This dynamically hits the backend to render ONLY the cropped section
+                                    preview_url = f"{API_URL}/pdf/preview/{source_name.lower()}/{encoded_filename}/{page_num}?highlight={encoded_crop}"
+                                    st.image(preview_url, caption=f"Highlighted Snippet (Page {page_num})", width="stretch")
+                                    
+                                    # 3. Open PDF Button
+                                    pdf_url = f"{API_URL}/pdf/{source_name.lower()}/{encoded_filename}#page={page_num}&search={search_term}"
+                                    st.link_button(f"Open PDF (Page {page_num}) ↗", pdf_url)
+
                                 else:
-                                    st.info("ℹ️ PDF preview not available.")
+                                    st.info("ℹ️ PDF available in new tab.")
                 else:
                     st.markdown(content)
             
@@ -299,7 +338,7 @@ def show_chat_page():
                                     "model": model,
                                     "session_id": new_session_id
                                 },
-                                timeout=60,
+                                timeout=300,
                             )
                             # Rerun to switch to "Chat View" (messages will exist)
                             st.session_state["chat_input_text"] = ""
@@ -321,7 +360,7 @@ def show_chat_page():
                             "model": model,
                             "session_id": current_session_id
                         },
-                        timeout=60,
+                                timeout=300,
                     )
                     st.rerun()
                 except Exception as e:
@@ -333,76 +372,13 @@ def show_chat_page():
             Powered by Ollama llama3.2 (100% Local & Free) | Sources: BNM, AAOIFI, SC Malaysia, JAKIM
         </div>
     """, unsafe_allow_html=True)
-def show_sources_page():
-    st.title("📚 Manage Sources")
-    st.markdown("Add new Shariah documents to the Knowledge Base.")
-    st.divider()
-    
-    # Tabs for Organization
-    tab1, tab2, tab3 = st.tabs(["Upload PDF", "Ingest URL", "Ingestion History"])
-    
-    with tab1:
-        st.subheader("📤 Upload PDF")
-        uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
-        
-        if uploaded_file is not None:
-            if st.button("Upload & Index"):
-                with st.spinner("Processing file..."):
-                    try:
-                        files = {"file": (uploaded_file.name, uploaded_file, "application/pdf")}
-                        response = requests.post(f"{API_URL}/ingest/upload", files=files, timeout=120)
-                        
-                        if response.status_code == 200:
-                            data = response.json()
-                            st.success(f"✅ Successfully processed: {data['file']}")
-                            st.json(data)
-                        else:
-                            st.error(f"Error: {response.text}")
-                    except Exception as e:
-                        st.error(f"Connection Error: {e}")
-    
-    with tab2:
-        st.subheader("🌐 Add by URL")
-        url = st.text_input("Document URL (PDF)", placeholder="https://example.com/document.pdf")
-        
-        if st.button("Craw & Index URL"):
-            if not url:
-                st.warning("Please enter a URL")
-            else:
-                with st.spinner("Downloading and processing..."):
-                    try:
-                        response = requests.post(f"{API_URL}/ingest/url", json={"url": url}, timeout=120)
-                        if response.status_code == 200:
-                            data = response.json()
-                            st.success(f"✅ Successfully processed: {data['file']}")
-                            st.json(data)
-                        else:
-                            st.error(f"Error: {response.text}")
-                    except Exception as e:
-                        st.error(f"Connection Error: {e}")
 
-    with tab3:
-        st.subheader("� Ingestion History")
-        if st.button("🔄 Refresh"):
-             st.rerun()
-             
-        try:
-            resp = requests.get(f"{API_URL}/history/sources", timeout=5)
-            if resp.status_code == 200:
-                history = resp.json()
-                if history:
-                    st.dataframe(history, use_container_width=True)
-                else:
-                    st.info("No ingestion history found.")
-            else:
-                st.error("Failed to load history")
-        except:
-             st.warning("Backend offline")
 
 # Router
 if page == "Chat":
     show_chat_page()
-else:
-    show_sources_page()
+elif page == "Admin Dashboard":
+    from src.ui.admin import show_admin_page
+    show_admin_page(API_URL)
 
 

@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     # Pinecone
     pinecone_index: str = "shariah-kb"
     pinecone_region: str = "us-east-1"
+
+    # Supabase
+    supabase_url: str = ""
+    supabase_key: str = ""
+    pdf_storage_bucket: str = "shariah-documents"
     
     # Paths
     data_dir: Path = Path("data")
@@ -27,7 +32,7 @@ class Settings(BaseSettings):
     request_timeout: int = 30
     
     # AI settings
-    llm_model: str = "claude-3-5-sonnet-20241022"
+    llm_model: str = "claude-3-5-haiku-20241022"
     llm_temperature: float = 0.2
     llm_max_tokens: int = 2000
     embedding_model: str = "text-embedding-3-large"
@@ -38,10 +43,21 @@ class Settings(BaseSettings):
     use_ollama: bool = True  # Set to False to use Anthropic instead
     
     # RAG settings
-    rag_top_k: int = 5
-    rag_relevance_threshold: float = 0.65  # Min score to include source (0.60-0.70 range)
+    rag_top_k: int = 60  # Increased for reranking (retrieve ample candidates)
+    rag_rerank_top_k: int = 25  # Increased to 25 to capture subtle details (like "Takaful")
+    rag_relevance_threshold: float = 0.60  # Lowered slightly as reranker handles precision
+    rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    
     chunk_size: int = 1000
     chunk_overlap: int = 200
+    
+    # Dynamic Prompt Settings
+    knowledge_sources: list[str] = [
+        "Bank Negara Malaysia (BNM) Shariah Policy Documents",
+        "AAOIFI Shariah Standards",
+        "Securities Commission Malaysia (SC) Resolutions",
+        "JAKIM Fatwas",
+    ]
     
     class Config:
         env_file = ".env"

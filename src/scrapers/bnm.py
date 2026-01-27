@@ -31,11 +31,14 @@ class BNMScraper(BaseScraper):
 
     # Pages to scrape for PDF documents
     PAGES = [
-        "/banking-islamic-banking",  # Main Islamic banking policy documents
-        "/shariah",
-        "/islamic-finance/shariah",
-        "/regulation/policy-documents/islamic-banking",
-        "/regulation/policy-documents/takaful-insurance",
+        "/banking-islamic-banking",
+        "/insurance-takaful",
+        "/development-financial-institutions",
+        "/money-services-business",
+        "/intermediaries",
+        "/payment-systems",
+        "/dnfbp",
+        "/regulations/currency",
     ]
 
     def __init__(self):

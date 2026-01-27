@@ -170,3 +170,12 @@ class PineconeStore:
             })
         
         return documents
+
+    def clear_index(self):
+        """Delete all vectors in the index."""
+        try:
+            self.index.delete(delete_all=True)
+            logger.info(f"Index {settings.pinecone_index} cleared.")
+        except Exception as e:
+            logger.error(f"Failed to clear index: {e}")
+            raise VectorDBError(f"Failed to clear index: {e}")

@@ -17,6 +17,7 @@ Powered by **Ollama** (Free & Local) or **Claude Haiku** (High Quality) with RAG
 | **Python** | 3.11+ | Required |
 | **Ollama** | Latest | For local LLM inference |
 | **Pinecone** | Free tier | For vector database |
+| **Supabase** | Free tier | For PostgreSQL + Storage |
 
 ### 1. Clone & Setup Environment
 
@@ -87,6 +88,10 @@ cp .env.example .env
 PINECONE_API_KEY=your-pinecone-api-key
 PINECONE_INDEX=shariah-kb
 
+# Supabase (required for database + storage)
+SUPABASE_URL=https://xxxxx.supabase.co
+SUPABASE_KEY=your-supabase-key
+
 # Optional Auth (Required only for Claude)
 ANTHROPIC_API_KEY=sk-ant-api03-...
 
@@ -95,7 +100,8 @@ DATA_DIR=data
 LOG_LEVEL=INFO
 
 # Optional RAG tuning
-RAG_RELEVANCE_THRESHOLD=0.65  # Min relevance score (0.60-0.70)
+RAG_RELEVANCE_THRESHOLD=0.60  # Min relevance score (0.60-0.70)
+RAG_RERANK_TOP_K=25           # After reranking
 ```
 
 > **Note:** Ollama runs 100% locally for free. An Anthropic API key is only needed if you want to use the Claude Haiku model.
@@ -111,7 +117,11 @@ ollama serve
 **Terminal 2 - API Backend:**
 
 ```bash
-uvicorn src.api.main:app --reload --port 8000
+# Recommended: Use the helper script (handles flags for you)
+./run_server.sh
+
+# Or manually (MUST use --loop asyncio for scraper to work):
+uvicorn src.api.main:app --reload --port 8000 --loop asyncio
 ```
 
 **Terminal 3 - Streamlit UI:**
@@ -137,13 +147,22 @@ for-ummah/
 │
 ├── src/
 │   ├── core/              # Configuration, language detection
-│   ├── scrapers/          # Web scrapers (BNM, AAOIFI, JAKIM)
+│   ├── db/                # Supabase integration
+│   │   ├── client.py      # Supabase client singleton
+│   │   ├── models.py      # Pydantic data models
+│   │   ├── storage.py     # Storage service (PDFs)
+│   │   └── repositories/  # Database repositories
+│   │       ├── documents.py   # Document CRUD
+│   │       ├── chat.py        # Chat sessions/messages
+│   │       ├── ingestion.py   # Ingestion history
+│   │       └── job_status.py  # Background job status
+│   ├── scrapers/          # Web scrapers (BNM, SC Malaysia)
 │   ├── processors/        # PDF extraction, text chunking
 │   ├── vector_db/         # Pinecone + Ollama embeddings
 │   ├── ai/                # RAG pipeline, prompts, Ollama + Claude LLMs
-│   ├── services/          # ChatService orchestrator
+│   ├── services/          # Business logic
 │   │   ├── chat.py        # ChatService orchestrator
-│   │   ├── history.py     # Chat history persistence
+│   │   ├── history.py     # Chat history (Supabase)
 │   │   └── ingestion.py   # Document ingestion pipeline
 │   └── api/               # FastAPI endpoints
 │
@@ -152,7 +171,10 @@ for-ummah/
 │   ├── scrape_url.py          # Download & index PDF from URL
 │   └── translate_claude.py    # (Optional) Batch translation tool
 │
-└── data/                  # Shariah documents (PDFs)
+├── docs/
+│   └── architecture.md    # System architecture diagrams
+│
+└── data/                  # Local cache (primary storage in Supabase)
 ```
 
 ---
@@ -165,9 +187,12 @@ for-ummah/
 | **LLM (Cloud)** | Claude 3.5 Haiku | ~$0.001/query (High Quality) |
 | **Embeddings** | Ollama nomic-embed-text | FREE (local) |
 | **Vector DB** | Pinecone | Free tier |
+| **Database** | Supabase PostgreSQL | Free tier |
+| **Storage** | Supabase Storage | Free tier |
 | **Backend** | FastAPI | - |
 | **Frontend** | Streamlit | - |
 | **PDF Extraction** | PyMuPDF → Tesseract OCR (cascade) | FREE |
+| **Reranking** | CrossEncoder (ms-marco-MiniLM) | FREE |
 
 ---
 
@@ -176,12 +201,15 @@ for-ummah/
 - 🌍 **Trilingual:** Arabic (العربية), English, Bahasa Melayu
 - 📚 **Authoritative Sources:** BNM, AAOIFI, SC Malaysia, JAKIM
 - 🤖 **Hybrid AI:** Choose between **Ollama (Free)** or **Claude Haiku (Smart)**
+- 🎯 **High-Precision Reranking:** CrossEncoder model boosts search relevance
 - 🔄 **Query Translation:** Auto-translates Malay/Arabic queries to English for better search precision
 - 📄 **Smart PDF:** Page-level tracking with Arabic OCR support
-- 🔍 **Source Citations:** Every answer shows its source page numbers
-- 💬 **Chat History:** Persistent conversation sessions with sidebar navigation
+- 🔍 **Source Verification:** Clickable citations with **Exact Quote**, **Page Previews (Image)**, & **Highlighted Text**
+- 💬 **Chat History:** Persistent conversation sessions stored in Supabase
 - 📤 **Source Management:** Upload PDFs or add by URL directly in UI
-- 🔗 **PDF Viewer:** Click source citations to open PDF at exact page
+- 🤖 **Automated Updates:** Scheduled background scraper (APScheduler) checks for new BNM/SC documents
+- 📊 **Admin Dashboard:** Monitor document counts, storage, system health, and trigger manual updates
+- ☁️ **Cloud Storage:** All documents stored in Supabase Storage with secure access
 
 ---
 
@@ -191,8 +219,12 @@ for-ummah/
 
 ```bash
 # Process all PDFs and index with page tracking
+# Process all PDFs and index with page tracking
 python scripts/reindex_with_pages.py
 ```
+
+> **Tip:** You can also trigger an update from the **Admin Dashboard** without running scripts manually.
+> Go to `/admin/trigger-update` or use the UI button.
 
 ### Add a single PDF from URL
 
@@ -222,9 +254,13 @@ This will:
 | `/history/chats` | GET | List all chat sessions |
 | `/history/chat/{id}` | GET | Get specific chat session |
 | `/history/chat` | POST | Create/update chat session |
+| `/history/sources` | GET | List all indexed sources |
 | `/ingest/url` | POST | Ingest document from URL |
 | `/ingest/upload` | POST | Upload and ingest PDF |
 | `/pdf/{source}/{filename}` | GET | Serve PDF file |
+| `/pdf/list` | GET | List available PDFs |
+| `/admin/trigger-update` | POST | Trigger scraper update |
+| `/admin/job-status` | GET | Get background job status |
 
 **Example API call:**
 

@@ -12,14 +12,33 @@ import logging
 import hashlib
 import re
 import time
+# import nest_asyncio
+# try:
+#     nest_asyncio.apply()
+# except ValueError:
+#     # Fails with uvloop
+#     pass
 
 import requests
 from bs4 import BeautifulSoup
 
 from src.core import settings
 from src.core.exceptions import ScraperError
+from src.db.client import is_supabase_configured
 
 logger = logging.getLogger(__name__)
+
+# Lazy-loaded document repository for deduplication
+_document_repo = None
+
+
+def _get_document_repo():
+    """Get document repository for checking existing documents."""
+    global _document_repo
+    if _document_repo is None and is_supabase_configured():
+        from src.db.repositories.documents import DocumentRepository
+        _document_repo = DocumentRepository()
+    return _document_repo
 
 # Playwright imports (optional - only needed for WAF bypass)
 try:
@@ -131,33 +150,55 @@ class BaseScraper(ABC):
         Returns:
             Page HTML content
         """
+    def _get_page_with_playwright_sync(self, url: str, wait_time: int) -> str:
+        """Internal sync method for Playwright page fetch."""
+        content = ""
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                context = browser.new_context(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                )
+                page = context.new_page()
+
+                try:
+                    # Navigate and wait for network to be idle
+                    page.goto(url, wait_until="networkidle", timeout=60000)
+
+                    # Additional wait for any JavaScript challenges
+                    page.wait_for_timeout(wait_time)
+
+                    # Get the page content
+                    content = page.content()
+
+                except PlaywrightTimeout:
+                    logger.warning(f"Timeout loading {url}")
+                finally:
+                    browser.close()
+        except Exception as e:
+            logger.warning(f"Playwright fetch failed: {e}")
+        return content
+
+    def _get_page_with_playwright(self, url: str, wait_time: int = 5000) -> str:
+        """
+        Fetch a page using Playwright to bypass bot protection (WAF).
+        ALWAYS runs in a separate thread to avoid 'Sync API inside asyncio loop' error.
+        """
         if not PLAYWRIGHT_AVAILABLE:
             raise ScraperError(self.source, "Playwright not installed", url)
 
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            )
-            page = context.new_page()
+        try:
+            from concurrent.futures import ThreadPoolExecutor
+            
+            # Use a thread pool to guarantee we are not in the main thread's loop.
+            # This works for both sync scripts and async apps (Uvicorn).
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(self._get_page_with_playwright_sync, url, wait_time)
+                return future.result(timeout=120)
 
-            try:
-                # Navigate and wait for network to be idle
-                page.goto(url, wait_until="networkidle", timeout=60000)
-
-                # Additional wait for any JavaScript challenges
-                page.wait_for_timeout(wait_time)
-
-                # Get the page content
-                content = page.content()
-
-            except PlaywrightTimeout:
-                logger.warning(f"Timeout loading {url}")
-                content = ""
-            finally:
-                browser.close()
-
-        return content
+        except Exception as e:
+            logger.warning(f"Error fetching page with Playwright: {e}")
+            return ""
 
     def _get_soup_with_playwright(self, url: str, wait_time: int = 5000) -> BeautifulSoup:
         """Fetch and parse HTML page using Playwright (for WAF-protected sites)."""
@@ -168,37 +209,67 @@ class BaseScraper(ABC):
         """Generate a unique hash for a document URL."""
         return hashlib.md5(url.encode()).hexdigest()[:12]
 
+    def _is_already_indexed(self, filename: str) -> bool:
+        """
+        Check if a document is already indexed in Supabase DB.
+
+        Args:
+            filename: PDF filename to check
+
+        Returns:
+            True if document exists in DB with 'indexed' status
+        """
+        doc_repo = _get_document_repo()
+        if not doc_repo:
+            return False
+
+        try:
+            existing = doc_repo.get_by_source_and_filename(self.source.lower(), filename)
+            if existing and existing.status == "indexed":
+                return True
+        except Exception as e:
+            logger.debug(f"Error checking indexed status: {e}")
+
+        return False
+
     def _sanitize_filename(self, filename: str) -> str:
         """Clean filename for filesystem compatibility."""
-        # Remove invalid characters
-        filename = re.sub(r'[<>:"/\\|?*]', '', filename)
+        # Remove invalid characters: < > : " / \ | ? * [ ] ( )
+        filename = re.sub(r'[<>:"/\\|?*\[\]\(\)]', '', filename)
         # Replace spaces with underscores
         filename = filename.replace(' ', '_')
+        # Final cleanup: Allow only alphanumeric, underscores, hyphens, and dots
+        filename = re.sub(r'[^\w\.-]', '', filename)
         # Limit length
         return filename[:100]
     
     def _download_pdf(self, url: str, filename: str | None = None) -> Path:
         """
         Download a PDF file.
-        
+
         Args:
             url: URL of the PDF
             filename: Optional custom filename
-            
+
         Returns:
             Path to saved file
         """
         if not filename:
             filename = url.split("/")[-1].split("?")[0]
-        
+
         # Ensure .pdf extension
         if not filename.lower().endswith(".pdf"):
             filename += ".pdf"
-        
+
         # Clean filename
         filename = "".join(c if c.isalnum() or c in "._-" else "_" for c in filename)
         file_path = self.data_dir / filename
-        
+
+        # Skip if already indexed in Supabase DB
+        if self._is_already_indexed(filename):
+            logger.info(f"Skipping already indexed: {filename}")
+            return file_path if file_path.exists() else None
+
         # Skip if already downloaded
         if file_path.exists():
             logger.debug(f"Skipping existing file: {filename}")
@@ -225,8 +296,15 @@ class BaseScraper(ABC):
             raise ScraperError(self.source, "Playwright not installed", url)
 
         doc_hash = self._get_document_hash(url)
-        filename = f"{doc_hash}_{self._sanitize_filename(title)}.pdf" if title else f"{doc_hash}.pdf"
+        # Ensure filename always ends in .pdf, even if original URL is .ashx
+        clean_title = self._sanitize_filename(title) if title else "document"
+        filename = f"{doc_hash}_{clean_title}.pdf"
         file_path = self.data_dir / filename
+
+        # Skip if already indexed in Supabase DB
+        if self._is_already_indexed(filename):
+            logger.info(f"Skipping already indexed: {filename}")
+            return file_path if file_path.exists() else None
 
         # Skip if already downloaded and not empty
         if file_path.exists() and file_path.stat().st_size > 0:
@@ -237,36 +315,32 @@ class BaseScraper(ABC):
         if file_path.exists():
             file_path.unlink()
 
+        # Optimization: If URL is a direct API download (like SC's .ashx), try requests first
+        # This avoids spinning up a browser for a simple file stream
+        if ".ashx" in url or "download" in url.lower():
+            logger.debug(f"Direct download link detected, trying requests first: {url}")
+            fallback_path = self._download_pdf_fallback(url, file_path)
+            if fallback_path:
+                return fallback_path
+
         try:
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
-                context = browser.new_context(
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    accept_downloads=True
-                )
-                page = context.new_page()
+            from concurrent.futures import ThreadPoolExecutor
+            
+            # Always run in thread pool to avoid asyncio conflicts
+            logger.debug(f"Offloading Playwright download to thread: {url}")
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(self._download_with_playwright_sync, url, file_path)
+                success = future.result(timeout=120)
 
-                # Set up download handling
-                with page.expect_download(timeout=60000) as download_info:
-                    # Navigate to PDF URL - this triggers the download
-                    page.goto(url, timeout=60000)
-
-                download = download_info.value
-                # Save the download to our filepath
-                download.save_as(str(file_path))
-                browser.close()
-
-            # Verify file was downloaded and is not empty
-            if file_path.exists() and file_path.stat().st_size > 0:
+            if success:
                 logger.info(f"Downloaded: {filename[:50]}...")
                 return file_path
             else:
-                logger.warning(f"Empty download: {url}")
-                return None
+                logger.warning(f"Playwright download failed for {url}")
+                return self._download_pdf_fallback(url, file_path)
 
         except Exception as e:
-            logger.warning(f"Playwright download failed for {url}: {e}")
-            # Try fallback with requests (some PDFs might work without WAF)
+            logger.warning(f"Playwright download error for {url}: {e}")
             return self._download_pdf_fallback(url, file_path)
 
     def _download_pdf_fallback(self, url: str, file_path: Path) -> Path | None:
@@ -464,7 +538,10 @@ class BaseScraper(ABC):
                     break
                 
                 try:
-                    file_path = self._download_pdf(url)
+                    # Generate filename from title if available
+                    custom_filename = f"{self._sanitize_filename(title)}.pdf" if title else None
+                    file_path = self._download_pdf(url, filename=custom_filename)
+                    
                     doc = ScrapedDocument(
                         source=self.source,
                         url=url,
