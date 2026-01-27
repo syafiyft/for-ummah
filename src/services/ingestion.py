@@ -36,6 +36,7 @@ class IngestionService:
         # Lazy-loaded services
         self._storage_service = None
         self._document_repo = None
+        self._history_service = None
 
     @property
     def storage_service(self):
@@ -52,6 +53,14 @@ class IngestionService:
             from src.db.repositories.documents import DocumentRepository
             self._document_repo = DocumentRepository()
         return self._document_repo
+
+    @property
+    def history_service(self):
+        """Lazy-load history service."""
+        if self._history_service is None:
+            from src.services.history import HistoryService
+            self._history_service = HistoryService()
+        return self._history_service
 
     def ingest_from_url(self, url: str) -> dict:
         """
@@ -156,6 +165,15 @@ class IngestionService:
             if existing:
                 if existing.status == "indexed":
                     logger.info(f"Skipping already indexed document: {file_path.name}")
+                    
+                    self.history_service.log_ingestion(
+                        type="ingest",
+                        source=source_name,
+                        filename=file_path.name,
+                        status="skipped",
+                        error="Already indexed"
+                    )
+
                     return {
                         "status": "skipped",
                         "message": "Document already indexed in database",
@@ -186,23 +204,38 @@ class IngestionService:
                         source=source_name
                     )
 
-                # Create document record
-                doc = Document(
-                    filename=file_path.name,
-                    original_filename=file_path.name,
-                    source=source_name,
-                    source_url=source_url,
-                    title=file_path.stem.replace("_", " ").title(),
-                    storage_path=storage_path,
-                    file_size_bytes=file_path.stat().st_size,
-                    status="processing"
-                )
-                created_doc = self.document_repo.create(doc)
-                doc_id = created_doc.id
-                logger.info(f"Created document record: {doc_id}")
+                # Check if document already exists (to avoid duplicate key error on re-index)
+                existing_doc = self.document_repo.get_by_source_and_filename(source_name, file_path.name)
+                
+                if existing_doc:
+                    # Update existing record
+                    logger.info(f"Updating existing document record: {existing_doc.id}")
+                    self.document_repo.update(existing_doc.id, {
+                        "status": "processing",
+                        "storage_path": storage_path,
+                        "file_size_bytes": file_path.stat().st_size,
+                        "title": file_path.stem.replace("_", " ").title(),
+                        "extraction_method": None # Reset for new extraction
+                    })
+                    doc_id = existing_doc.id
+                else:
+                    # Create new document record
+                    doc = Document(
+                        filename=file_path.name,
+                        original_filename=file_path.name,
+                        source=source_name,
+                        source_url=source_url,
+                        title=file_path.stem.replace("_", " ").title(),
+                        storage_path=storage_path,
+                        file_size_bytes=file_path.stat().st_size,
+                        status="processing"
+                    )
+                    created_doc = self.document_repo.create(doc)
+                    doc_id = created_doc.id
+                    logger.info(f"Created document record: {doc_id}")
 
             except Exception as e:
-                logger.warning(f"Failed to create document record: {e}")
+                logger.warning(f"Failed to create/update document record: {e}")
 
         # 1. Extract Text
         logger.info(f"Extracting text from: {file_path.name}")
@@ -217,6 +250,15 @@ class IngestionService:
                     doc_id, "failed",
                     error_message="No text could be extracted from the document"
                 )
+
+            # Log failure
+            self.history_service.log_ingestion(
+                type="ingest",
+                source=source_name,
+                filename=file_path.name,
+                status="failed",
+                error="No text extracted"
+            )
 
             return {
                 "status": "error",
@@ -264,6 +306,16 @@ class IngestionService:
                 "extraction_method": extraction.method.value,
                 "indexed_at": datetime.now().isoformat()
             })
+
+        # Log success to history
+        self.history_service.log_ingestion(
+            type="ingest",
+            source=source_name,
+            filename=file_path.name,
+            status=f"Indexed ({count} chunks)",
+            chunks_created=count,
+            duration_seconds=round(duration, 2)
+        )
 
         return {
             "status": "success",

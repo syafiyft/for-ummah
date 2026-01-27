@@ -104,6 +104,7 @@ UPDATE STATUS (Supabase: status = 'indexed')
 ```
 
 **Metadata stored per chunk (Pinecone):**
+
 - `source`: BNM, SC_Malaysia, Manual
 - `page_number` / `total_pages`
 - `language`: en, ar, ms
@@ -111,6 +112,7 @@ UPDATE STATUS (Supabase: status = 'indexed')
 - `document_id`: UUID from Supabase
 
 **Document metadata (Supabase PostgreSQL):**
+
 - `id`, `filename`, `source`, `source_url`
 - `title`, `storage_path`, `file_size_bytes`
 - `total_pages`, `extraction_method`
@@ -165,6 +167,7 @@ UPDATE STATUS (Supabase: status = 'indexed')
 | **Cost per query** | $0 | ~$0.001 |
 
 **Latency breakdown:**
+
 - Query embedding: 500ms
 - Vector search: 300ms
 - Reranking (60 docs): 1-2s
@@ -438,12 +441,14 @@ LLM_MAX_TOKENS=2000
 | **Supabase** | PostgreSQL + Storage | Yes | FREE tier (500MB DB + 1GB Storage) |
 | **Anthropic** | Claude LLM | Optional | ~$0.001/query |
 | **Google Translate** | Query/response translation | Auto | FREE tier |
+| **nest_asyncio** | Event loop patching for Playwright | Yes | FREE |
 
 ---
 
 ## Deployment Options
 
 ### Development
+
 ```bash
 # Terminal 1: Ollama
 ollama serve
@@ -456,6 +461,7 @@ streamlit run app.py
 ```
 
 ### Production (Docker)
+
 ```dockerfile
 # Recommended: Docker Compose with:
 # - FastAPI container

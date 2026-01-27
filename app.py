@@ -124,13 +124,31 @@ with st.sidebar:
                     is_active = st.session_state.get("session_id") == chat_id
 
                     # Simple button - active chat uses primary (red) style
-                    if is_active:
-                        if st.button(chat_title, key=f"hist_{chat_id}", use_container_width=True, type="primary"):
-                            pass  # Already active
-                    else:
-                        if st.button(chat_title, key=f"hist_{chat_id}", use_container_width=True):
-                            st.session_state["session_id"] = chat_id
-                            st.rerun()
+                    col1, col2 = st.columns([0.85, 0.15])
+                    with col1:
+                        if is_active:
+                            if st.button(chat_title, key=f"hist_{chat_id}", use_container_width=True, type="primary"):
+                                pass  # Already active
+                        else:
+                            if st.button(chat_title, key=f"hist_{chat_id}", use_container_width=True):
+                                st.session_state["session_id"] = chat_id
+                                st.rerun()
+                    
+                    with col2:
+                        # Delete button with confirmation fallback (Streamlit immediate delete for now as per plan)
+                        if st.button("🗑️", key=f"del_{chat_id}", help="Delete Chat"):
+                            try:
+                                del_resp = requests.delete(f"{API_URL}/history/chat/{chat_id}", timeout=5)
+                                if del_resp.status_code == 200:
+                                    st.toast("Chat deleted successfully")
+                                    # If deleted active session, clear selection
+                                    if is_active:
+                                        st.session_state["session_id"] = None
+                                    st.rerun()
+                                else:
+                                    st.error("Failed to delete")
+                            except Exception as e:
+                                st.error(f"Error: {e}")
                                     
         elif history_resp and history_resp.status_code == 200:
              st.info("No recent chats")
@@ -320,7 +338,7 @@ def show_chat_page():
                                     "model": model,
                                     "session_id": new_session_id
                                 },
-                                timeout=60,
+                                timeout=300,
                             )
                             # Rerun to switch to "Chat View" (messages will exist)
                             st.session_state["chat_input_text"] = ""
@@ -342,7 +360,7 @@ def show_chat_page():
                             "model": model,
                             "session_id": current_session_id
                         },
-                        timeout=60,
+                                timeout=300,
                     )
                     st.rerun()
                 except Exception as e:

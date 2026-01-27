@@ -117,7 +117,11 @@ ollama serve
 **Terminal 2 - API Backend:**
 
 ```bash
-uvicorn src.api.main:app --reload --port 8000
+# Recommended: Use the helper script (handles flags for you)
+./run_server.sh
+
+# Or manually (MUST use --loop asyncio for scraper to work):
+uvicorn src.api.main:app --reload --port 8000 --loop asyncio
 ```
 
 **Terminal 3 - Streamlit UI:**
@@ -215,8 +219,12 @@ for-ummah/
 
 ```bash
 # Process all PDFs and index with page tracking
+# Process all PDFs and index with page tracking
 python scripts/reindex_with_pages.py
 ```
+
+> **Tip:** You can also trigger an update from the **Admin Dashboard** without running scripts manually.
+> Go to `/admin/trigger-update` or use the UI button.
 
 ### Add a single PDF from URL
 

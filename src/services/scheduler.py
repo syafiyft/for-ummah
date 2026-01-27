@@ -25,7 +25,7 @@ def run_daily_update(sources: list[str] = None):
     
     # Default sources if None
     if not sources:
-        sources = ["BNM"]
+        sources = ["BNM", "SC", "AAOIFI"]
 
     try:
         total_docs = 0
@@ -36,7 +36,7 @@ def run_daily_update(sources: list[str] = None):
             try:
                 scraper = BNMScraper()
                 logger.info(f"[{job_id}] Running BNM Scraper...")
-                documents = scraper.run(limit=5)
+                documents = scraper.run()
                 
                 # Ingest
                 _ingest_documents(documents, history_service, job_id, 0.3, 0.5)
@@ -47,17 +47,47 @@ def run_daily_update(sources: list[str] = None):
         # --- 2. SC MALAYSIA SCRAPER ---
         if "SC" in sources:
             from src.scrapers.sc import SCScraper
-            history_service.update_job_status("running", "Scraping SC Malaysia...", 0.6)
+            history_service.update_job_status("running", "Scraping SC Malaysia...", 0.4)
             try:
                 scraper = SCScraper()
                 logger.info(f"[{job_id}] Running SC Scraper...")
-                documents = scraper.run(limit=5)
+                documents = scraper.run()
                 
                 # Ingest
-                _ingest_documents(documents, history_service, job_id, 0.7, 0.9)
+                _ingest_documents(documents, history_service, job_id, 0.4, 0.6)
                 total_docs += len(documents)
             except Exception as e:
                 logger.error(f"SC Scraper failed: {e}")
+
+        # --- 3. AAOIFI SCRAPER ---
+        if "AAOIFI" in sources:
+            from src.scrapers.aaoifi import AAOIFIScraper
+            history_service.update_job_status("running", "Scraping AAOIFI...", 0.6)
+            try:
+                scraper = AAOIFIScraper()
+                logger.info(f"[{job_id}] Running AAOIFI Scraper...")
+                documents = scraper.run()
+                
+                # Ingest
+                _ingest_documents(documents, history_service, job_id, 0.6, 0.8)
+                total_docs += len(documents)
+            except Exception as e:
+                logger.error(f"AAOIFI Scraper failed: {e}")
+
+        # --- 4. JAKIM SCRAPER ---
+        if "JAKIM" in sources:
+            from src.scrapers.jakim import JAKIMScraper
+            history_service.update_job_status("running", "Scraping JAKIM...", 0.8)
+            try:
+                scraper = JAKIMScraper()
+                logger.info(f"[{job_id}] Running JAKIM Scraper...")
+                documents = scraper.run(limit=5)
+                
+                # Ingest
+                _ingest_documents(documents, history_service, job_id, 0.8, 1.0)
+                total_docs += len(documents)
+            except Exception as e:
+                logger.error(f"JAKIM Scraper failed: {e}")
 
         
         history_service.update_job_status("completed", f"Job finished. Processed {total_docs} documents.", 1.0)
@@ -73,59 +103,34 @@ def _ingest_documents(documents, history_service, job_id, start_prog, end_prog):
     total = len(documents)
     if total == 0: return
 
-    # Load existing history to check for duplicates
-    # This is a simple memory-based check. For production, use DB.
-    existing_history = history_service.get_ingestion_history()
-    processed_files = {h["filename"] for h in existing_history if h.get("status") == "success"}
-
     for idx, doc in enumerate(documents):
         # Calculate granular progress
         current_prog = start_prog + ((idx / total) * (end_prog - start_prog))
-        history_service.update_job_status("running", f"Checking: {doc.title[:50]}...", current_prog)
+        history_service.update_job_status("running", f"Processing: {doc.title[:50]}...", current_prog)
         
-        # Check if already processed
-        if doc.file_path.name in processed_files:
-            history_service.log_ingestion(
-                type="auto_update",
-                source=doc.source,
-                filename=doc.file_path.name,
-                status="skipped",
-                error="Already processed"
-            )
-            logger.info(f"[{job_id}] Skipped existing: {doc.title}")
-            continue
-
         try:
-            logger.info(f"[{job_id}] Ingesting: {doc.title}")
-            history_service.update_job_status("running", f"Ingesting: {doc.title[:50]}...", current_prog)
+            # IngestionService now handles history logging centrally
+            logger.info(f"[{job_id}] Processing: {doc.title}")
             
-            # Pass source explicitly
             result = ingestion_service._process_document(
                 file_path=doc.file_path, 
                 source_url=doc.url,
                 source_name=doc.source
             )
             
-            # Log to history
-            history_service.log_ingestion(
-                type="auto_update",
-                source=doc.source,
-                filename=doc.file_path.name,
-                status=result.get("status", "unknown"),
-                error=result.get("message")
-            )
-            
-            # Add to local cache for this run
-            processed_files.add(doc.file_path.name)
+            if result.get("status") == "skipped":
+                logger.info(f"[{job_id}] Skipped: {doc.title}")
             
         except Exception as e:
             logger.error(f"[{job_id}] Failed to ingest {doc.title}: {e}")
+            # IngestionService should catch its own errors, but if it crashes, we log here too just in case
+            # to keep the loop going.
             history_service.log_ingestion(
                 type="auto_update",
                 source=doc.source,
                 filename=doc.file_path.name,
                 status="failed",
-                error=str(e)
+                error=f"Scheduler Error: {str(e)}"
             )
 def start_scheduler():
     """Start the background scheduler."""

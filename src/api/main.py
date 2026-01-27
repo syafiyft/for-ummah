@@ -367,7 +367,7 @@ async def get_pdf(source: str, filename: str, redirect: bool = True):
     Returns:
         PDF file or redirect to signed URL
     """
-    from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+    from fastapi.responses import FileResponse, RedirectResponse
     from pathlib import Path
     from urllib.parse import unquote
     from src.core import settings

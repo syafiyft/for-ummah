@@ -13,7 +13,9 @@ flowchart TB
     subgraph Backend["⚙️ Backend (FastAPI)"]
         API[API Endpoints]
         ChatSvc[ChatService]
+        ChatSvc[ChatService]
         IngestSvc[IngestionService]
+        HistSvc[HistoryService]
         RAG[RAG Pipeline]
     end
 
@@ -30,10 +32,10 @@ flowchart TB
         PDFs[("data/ local cache")]
     end
 
-    subgraph Scrapers["🔧 Scrapers"]
+    subgraph Scrapers["🔧 Scrapers (Threaded)"]
         BNM[BNM Scraper]
         Manual[Manual Scraper]
-        Playwright[Playwright WAF Bypass]
+        Playwright[Playwright (nest_asyncio)]
     end
 
     UI --> API

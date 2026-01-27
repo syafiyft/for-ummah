@@ -51,14 +51,16 @@ def show_admin_page(api_url):
     st.subheader("Automated Scraper")
     
     # Source Selection
-    c1, c2 = st.columns(2)
-    use_bnm = c1.checkbox("Bank Negara (BNM)", value=True)
-    use_sc = c2.checkbox("SC Malaysia", value=True)
+    c1, c2, c3 = st.columns(3)
+    use_bnm = c1.checkbox("BNM", value=True)
+    use_sc = c2.checkbox("SC", value=True)
+    use_aaoifi = c3.checkbox("AAOIFI", value=True)
     
     if st.button("Trigger Update Now", type="primary"):
         sources = []
         if use_bnm: sources.append("BNM")
         if use_sc: sources.append("SC")
+        if use_aaoifi: sources.append("AAOIFI")
         
         try:
             resp = requests.post(f"{api_url}/admin/trigger-update", json={"sources": sources}, timeout=5)
@@ -102,7 +104,13 @@ def show_admin_page(api_url):
             if history:
                 df = pd.DataFrame(history)
                 if "timestamp" in df.columns:
-                    df["timestamp"] = df["timestamp"].apply(lambda x: x.split(".")[0].replace("T", " "))
+                    # Convert to datetime
+                    df["timestamp"] = pd.to_datetime(df["timestamp"])
+                    # If naive, localize to UTC (assuming backend stores UTC)
+                    if df["timestamp"].dt.tz is None:
+                        df["timestamp"] = df["timestamp"].dt.tz_localize("UTC")
+                    # Convert to Malaysia time
+                    df["timestamp"] = df["timestamp"].dt.tz_convert("Asia/Kuala_Lumpur").dt.strftime("%Y-%m-%d %H:%M:%S")
                     
                 # Clean table columns
                 st.dataframe(
@@ -115,24 +123,4 @@ def show_admin_page(api_url):
     except:
         st.caption("Unable to load history.")
 
-    st.divider()
-    
-    # 3. Cost Estimator (Mockup)
-    st.subheader("💰 Usage & Cost Estimator")
-    
-    # Mock data for visualization
-    mock_data = {
-        "Day": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-        "Queries": [45, 60, 55, 80, 70, 30, 40],
-        "Cost ($)": [0.05, 0.08, 0.06, 0.10, 0.09, 0.03, 0.04]
-    }
-    df = pd.DataFrame(mock_data)
-    
-    tab1, tab2 = st.tabs(["Queries", "Estimated Cost"])
-    
-    with tab1:
-        st.bar_chart(df.set_index("Day")["Queries"])
-    
-    with tab2:
-        st.line_chart(df.set_index("Day")["Cost ($)"])
-        st.caption("*Based on Claude Haiku pricing ($0.25/M tokens)*")
+
